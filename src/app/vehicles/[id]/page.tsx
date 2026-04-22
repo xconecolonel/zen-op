@@ -124,7 +124,13 @@ function getKmColor(mileage: number | null, nextService: number | null) {
 function historyDotClassFromTriage(value: string | null) {
   const v = (value || '').toLowerCase()
   if (v.includes('bon') || v === 'ok') return 'bg-[#4dbb7a]'
-  if (v.includes('moyen') || v.includes('prévoir') || v.includes('planif') || v.includes('vérifier')) return 'bg-[#ffaa33]'
+  if (
+    v.includes('moyen') ||
+    v.includes('prévoir') ||
+    v.includes('planif') ||
+    v.includes('vérifier')
+  )
+    return 'bg-[#ffaa33]'
   return 'bg-[#ff6b6b]'
 }
 
@@ -156,7 +162,9 @@ function InlineEditable({
 
   return (
     <div>
-      <div className="mb-1 text-[10px] uppercase tracking-[0.06em] text-[#555]">{label}</div>
+      <div className="mb-1 text-[10px] uppercase tracking-[0.06em] text-[#555]">
+        {label}
+      </div>
 
       {editing ? (
         <input
@@ -295,9 +303,23 @@ export default function VehiclePage() {
     if (list[0]) {
       const last = list[0]
       setInspectedBy(last.inspected_by || '')
-      setMileageInput(last.mileage_at_inspection ? String(last.mileage_at_inspection) : '')
-      setPneusState(last.tire_condition === 'Bon' ? 'ok' : last.tire_condition === 'Moyen' ? 'warn' : 'bad')
-      setFreinsState(last.brake_condition === 'Bon' ? 'ok' : last.brake_condition === 'Moyen' ? 'warn' : 'bad')
+      setMileageInput(
+        last.mileage_at_inspection ? String(last.mileage_at_inspection) : ''
+      )
+      setPneusState(
+        last.tire_condition === 'Bon'
+          ? 'ok'
+          : last.tire_condition === 'Moyen'
+          ? 'warn'
+          : 'bad'
+      )
+      setFreinsState(
+        last.brake_condition === 'Bon'
+          ? 'ok'
+          : last.brake_condition === 'Moyen'
+          ? 'warn'
+          : 'bad'
+      )
       setVoyantsState(last.warning_lights ? 'warn' : 'ok')
       setCarClean(last.car_clean ?? true)
       setReadyLongTerm(last.ready_for_lld ?? false)
@@ -367,7 +389,9 @@ export default function VehiclePage() {
     })
   }, [inspections, historySearch])
 
-  const visibleHistory = showAllHistory ? filteredHistory : filteredHistory.slice(0, 3)
+  const visibleHistory = showAllHistory
+    ? filteredHistory
+    : filteredHistory.slice(0, 3)
 
   async function handleSaveInspection() {
     if (!vehicle) return
@@ -380,12 +404,18 @@ export default function VehiclePage() {
 
     setSaving(true)
 
-    const mappedTire = pneusState === 'ok' ? 'Bon' : pneusState === 'warn' ? 'Moyen' : 'Mauvais'
-    const mappedBrake = freinsState === 'ok' ? 'Bon' : freinsState === 'warn' ? 'Moyen' : 'Mauvais'
+    const mappedTire =
+      pneusState === 'ok' ? 'Bon' : pneusState === 'warn' ? 'Moyen' : 'Mauvais'
+    const mappedBrake =
+      freinsState === 'ok' ? 'Bon' : freinsState === 'warn' ? 'Moyen' : 'Mauvais'
     const mappedVehicleStatus = statusConfig[currentStatus].label
 
     const mappedBodyworkStatus =
-      carrosserieState === 'ok' ? 'ok' : carrosserieState === 'warn' ? 'a_verifier' : 'en_cours'
+      carrosserieState === 'ok'
+        ? 'ok'
+        : carrosserieState === 'warn'
+        ? 'a_verifier'
+        : 'en_cours'
 
     const finalBodyworkNote = [
       voyantsState !== 'ok' && warningNote ? `Voyants: ${warningNote}` : null,
@@ -401,21 +431,32 @@ export default function VehiclePage() {
       .filter(Boolean)
       .join(' | ')
 
-    const { error: inspectionError } = await supabase
-      .from('inspections')
-      .insert({
-        vehicle_id: vehicle.id,
-        inspected_by: inspectedBy || null,
-        mileage_at_inspection: mileageInput ? Number(mileageInput) : currentMileageNum || null,
-        tire_condition: mappedTire,
-        brake_condition: mappedBrake,
-        warning_lights: voyantsState !== 'ok',
-        bodywork_status: mappedBodyworkStatus,
-        bodywork_note: finalBodyworkNote || null,
-        car_clean: carClean,
-        ready_for_lld: readyLongTerm,
-        comment: finalComment || null,
-      })
+    const mergedVehicleNotes = [
+      comment?.trim() ? `Commentaire: ${comment.trim()}` : null,
+      extraNotes?.trim() ? `Notes: ${extraNotes.trim()}` : null,
+      sinistreDescription?.trim()
+        ? `Sinistre: ${sinistreDescription.trim()}`
+        : null,
+      warningNote?.trim() ? `Voyants: ${warningNote.trim()}` : null,
+    ]
+      .filter(Boolean)
+      .join(' | ')
+
+    const { error: inspectionError } = await supabase.from('inspections').insert({
+      vehicle_id: vehicle.id,
+      inspected_by: inspectedBy || null,
+      mileage_at_inspection: mileageInput
+        ? Number(mileageInput)
+        : currentMileageNum || null,
+      tire_condition: mappedTire,
+      brake_condition: mappedBrake,
+      warning_lights: voyantsState !== 'ok',
+      bodywork_status: mappedBodyworkStatus,
+      bodywork_note: finalBodyworkNote || null,
+      car_clean: carClean,
+      ready_for_lld: readyLongTerm,
+      comment: finalComment || null,
+    })
 
     if (inspectionError) {
       setSaveMessage(`Erreur : ${inspectionError.message}`)
@@ -433,11 +474,14 @@ export default function VehiclePage() {
         parking_location: parkingLocation || null,
         status: mappedVehicleStatus,
         bodywork_status: mappedBodyworkStatus,
+        notes: mergedVehicleNotes || null,
       })
       .eq('id', vehicle.id)
 
     if (vehicleError) {
-      setSaveMessage(`Inspection enregistrée, mais mise à jour véhicule impossible : ${vehicleError.message}`)
+      setSaveMessage(
+        `Inspection enregistrée, mais mise à jour véhicule impossible : ${vehicleError.message}`
+      )
       setSaving(false)
       return
     }
@@ -516,7 +560,9 @@ export default function VehiclePage() {
               {vehicle.license_plate}
             </span>
 
-            <span className={`rounded-full px-3 py-1 text-[11px] font-semibold ${statusConfig[currentStatus].badgeClass}`}>
+            <span
+              className={`rounded-full px-3 py-1 text-[11px] font-semibold ${statusConfig[currentStatus].badgeClass}`}
+            >
               {statusConfig[currentStatus].label}
             </span>
           </div>
@@ -528,17 +574,41 @@ export default function VehiclePage() {
               <InlineEditable label="Année" value={yearText} onChange={setYearText} />
               <InlineEditable label="Couleur" value={colorText} onChange={setColorText} />
               <InlineEditable label="Carburant" value={fuelText} onChange={setFuelText} />
-              <InlineEditable label="Emplacement" value={parkingLocation} onChange={setParkingLocation} />
+              <InlineEditable
+                label="Emplacement"
+                value={parkingLocation}
+                onChange={setParkingLocation}
+              />
             </div>
 
             <div className="my-[11px] h-px bg-[#2a2a2a]" />
 
             <div className="mb-3 grid grid-cols-3 gap-[10px]">
-              <InlineEditable label="Km actuel" value={currentMileageText} onChange={setCurrentMileageText} type="number" />
-              <InlineEditable label="Prochain entretien" value={nextServiceText} onChange={setNextServiceText} type="number" />
+              <InlineEditable
+                label="Km actuel"
+                value={currentMileageText}
+                onChange={setCurrentMileageText}
+                type="number"
+              />
+              <InlineEditable
+                label="Prochain entretien"
+                value={nextServiceText}
+                onChange={setNextServiceText}
+                type="number"
+              />
               <div>
-                <div className="mb-1 text-[10px] uppercase tracking-[0.06em] text-[#555]">Reste</div>
-                <div className="text-[13px] font-medium" style={{ color: remainingKm !== null && remainingKm <= 3000 ? '#ff6b6b' : '#e0e0e0' }}>
+                <div className="mb-1 text-[10px] uppercase tracking-[0.06em] text-[#555]">
+                  Reste
+                </div>
+                <div
+                  className="text-[13px] font-medium"
+                  style={{
+                    color:
+                      remainingKm !== null && remainingKm <= 3000
+                        ? '#ff6b6b'
+                        : '#e0e0e0',
+                  }}
+                >
                   {remainingKm !== null ? `${formatKm(remainingKm)} km` : '—'}
                 </div>
               </div>
@@ -546,7 +616,10 @@ export default function VehiclePage() {
 
             <div className="mb-1 flex justify-between text-[11px] text-[#555]">
               <span>{formatKm(currentMileageNum || null)} km</span>
-              <span>Entretien à {formatKm(nextServiceNum || null)} km — {Math.round(kmPercent)}%</span>
+              <span>
+                Entretien à {formatKm(nextServiceNum || null)} km —{' '}
+                {Math.round(kmPercent)}%
+              </span>
             </div>
 
             <div className="mb-3 h-[6px] overflow-hidden rounded-full bg-[#2a2a2a]">
@@ -557,8 +630,16 @@ export default function VehiclePage() {
             </div>
 
             <div className="mb-3 grid grid-cols-2 gap-[11px]">
-              <InlineEditable label="Contrat" value={contractLabel} onChange={setContractLabel} />
-              <InlineEditable label="Fin contrat" value={contractEnd} onChange={setContractEnd} />
+              <InlineEditable
+                label="Contrat"
+                value={contractLabel}
+                onChange={setContractLabel}
+              />
+              <InlineEditable
+                label="Fin contrat"
+                value={contractEnd}
+                onChange={setContractEnd}
+              />
             </div>
           </div>
         </div>
@@ -583,16 +664,28 @@ export default function VehiclePage() {
         >
           <div>
             <div className="text-[13px] font-medium text-[#e0e0e0]">
-              {filteredHistory.length} inspection{filteredHistory.length > 1 ? 's' : ''} trouvée{filteredHistory.length > 1 ? 's' : ''}
+              {filteredHistory.length} inspection
+              {filteredHistory.length > 1 ? 's' : ''} trouvée
+              {filteredHistory.length > 1 ? 's' : ''}
             </div>
             <div className="mt-[3px] text-[11px] text-[#555]">
               {filteredHistory[0]
-                ? `Dernière : ${formatDate(filteredHistory[0].inspection_date || filteredHistory[0].created_at)} à ${formatTime(filteredHistory[0].created_at)} par ${filteredHistory[0].inspected_by || '—'}`
+                ? `Dernière : ${formatDate(
+                    filteredHistory[0].inspection_date || filteredHistory[0].created_at
+                  )} à ${formatTime(filteredHistory[0].created_at)} par ${
+                    filteredHistory[0].inspected_by || '—'
+                  }`
                 : 'Aucune inspection enregistrée'}
             </div>
           </div>
 
-          <span className={`text-[12px] text-[#444] transition ${historyOpen ? 'rotate-180' : ''}`}>▼</span>
+          <span
+            className={`text-[12px] text-[#444] transition ${
+              historyOpen ? 'rotate-180' : ''
+            }`}
+          >
+            ▼
+          </span>
         </button>
 
         {historyOpen ? (
@@ -601,40 +694,71 @@ export default function VehiclePage() {
               <div className="px-4 py-4 text-sm text-[#666]">Aucun résultat.</div>
             ) : (
               visibleHistory.map((insp) => (
-                <div key={insp.id} className="border-b border-[#1f1f1f] px-4 py-[14px] last:border-b-0">
+                <div
+                  key={insp.id}
+                  className="border-b border-[#1f1f1f] px-4 py-[14px] last:border-b-0"
+                >
                   <div className="mb-[10px] flex items-center justify-between">
                     <span className="text-[12px] font-semibold text-[#ccc]">
                       {formatDate(insp.inspection_date || insp.created_at)}
                     </span>
                     <span className="text-[11px] text-[#555]">
                       {insp.inspected_by || '—'} · {formatTime(insp.created_at)}
-                      {insp.mileage_at_inspection ? ` · ${formatKm(insp.mileage_at_inspection)} km` : ''}
+                      {insp.mileage_at_inspection
+                        ? ` · ${formatKm(insp.mileage_at_inspection)} km`
+                        : ''}
                     </span>
                   </div>
 
                   <div className="mb-2 grid grid-cols-2 gap-[6px] text-[12px] text-[#777]">
                     <div className="flex items-center gap-[6px]">
-                      <div className={`h-[7px] w-[7px] rounded-full ${historyDotClassFromTriage(insp.tire_condition)}`} />
+                      <div
+                        className={`h-[7px] w-[7px] rounded-full ${historyDotClassFromTriage(
+                          insp.tire_condition
+                        )}`}
+                      />
                       Pneus : {insp.tire_condition || '—'}
                     </div>
                     <div className="flex items-center gap-[6px]">
-                      <div className={`h-[7px] w-[7px] rounded-full ${historyDotClassFromTriage(insp.brake_condition)}`} />
+                      <div
+                        className={`h-[7px] w-[7px] rounded-full ${historyDotClassFromTriage(
+                          insp.brake_condition
+                        )}`}
+                      />
                       Freins : {insp.brake_condition || '—'}
                     </div>
                     <div className="flex items-center gap-[6px]">
-                      <div className={`h-[7px] w-[7px] rounded-full ${insp.warning_lights ? 'bg-[#ff6b6b]' : 'bg-[#4dbb7a]'}`} />
+                      <div
+                        className={`h-[7px] w-[7px] rounded-full ${
+                          insp.warning_lights ? 'bg-[#ff6b6b]' : 'bg-[#4dbb7a]'
+                        }`}
+                      />
                       Voyants : {insp.warning_lights ? 'Actifs' : 'Aucun'}
                     </div>
                     <div className="flex items-center gap-[6px]">
-                      <div className={`h-[7px] w-[7px] rounded-full ${insp.bodywork_status === 'ok' ? 'bg-[#4dbb7a]' : 'bg-[#ffaa33]'}`} />
+                      <div
+                        className={`h-[7px] w-[7px] rounded-full ${
+                          insp.bodywork_status === 'ok'
+                            ? 'bg-[#4dbb7a]'
+                            : 'bg-[#ffaa33]'
+                        }`}
+                      />
                       Carrosserie : {insp.bodywork_status || '—'}
                     </div>
                     <div className="flex items-center gap-[6px]">
-                      <div className={`h-[7px] w-[7px] rounded-full ${insp.car_clean ? 'bg-[#4dbb7a]' : 'bg-[#ff6b6b]'}`} />
+                      <div
+                        className={`h-[7px] w-[7px] rounded-full ${
+                          insp.car_clean ? 'bg-[#4dbb7a]' : 'bg-[#ff6b6b]'
+                        }`}
+                      />
                       Propreté : {insp.car_clean ? 'propre' : 'sale'}
                     </div>
                     <div className="flex items-center gap-[6px]">
-                      <div className={`h-[7px] w-[7px] rounded-full ${insp.ready_for_lld ? 'bg-[#4dbb7a]' : 'bg-[#ff6b6b]'}`} />
+                      <div
+                        className={`h-[7px] w-[7px] rounded-full ${
+                          insp.ready_for_lld ? 'bg-[#4dbb7a]' : 'bg-[#ff6b6b]'
+                        }`}
+                      />
                       Prête LLD : {insp.ready_for_lld ? 'oui' : 'non'}
                     </div>
                   </div>
@@ -661,7 +785,9 @@ export default function VehiclePage() {
                   onClick={() => setShowAllHistory((v) => !v)}
                   className="w-full rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-4 py-2 text-sm text-[#e0e0e0]"
                 >
-                  {showAllHistory ? 'Voir seulement les 3 premières' : `+ Voir les ${filteredHistory.length - 3} restantes`}
+                  {showAllHistory
+                    ? 'Voir seulement les 3 premières'
+                    : `+ Voir les ${filteredHistory.length - 3} restantes`}
                 </button>
               </div>
             ) : null}
@@ -675,13 +801,18 @@ export default function VehiclePage() {
         <div className="mx-4 mb-2 rounded-xl border border-[#2a2a2a] bg-[#1a1a1a] px-4 py-[14px]">
           <div className="mb-[10px] flex items-center justify-between text-[12px] text-[#888]">
             <span>Statut actuel</span>
-            <span className="min-w-[100px] text-right text-[12px] font-semibold" style={{ color: statusConfig[currentStatus].color }}>
+            <span
+              className="min-w-[100px] text-right text-[12px] font-semibold"
+              style={{ color: statusConfig[currentStatus].color }}
+            >
               {statusConfig[currentStatus].label}
             </span>
           </div>
 
           <div className="flex gap-1">
-            {(['dispo', 'contrat', 'carro', 'entretien', 'indispo'] as VehicleStatusKey[]).map((key) => (
+            {(
+              ['dispo', 'contrat', 'carro', 'entretien', 'indispo'] as VehicleStatusKey[]
+            ).map((key) => (
               <button
                 key={key}
                 type="button"
@@ -712,7 +843,9 @@ export default function VehiclePage() {
 
         <div className="mx-4 mb-2 grid grid-cols-2 gap-2">
           <div>
-            <div className="mb-1 text-[10px] uppercase tracking-[0.06em] text-[#555]">Contrôlé par</div>
+            <div className="mb-1 text-[10px] uppercase tracking-[0.06em] text-[#555]">
+              Contrôlé par
+            </div>
             <input
               value={inspectedBy}
               onChange={(e) => setInspectedBy(e.target.value)}
@@ -722,7 +855,9 @@ export default function VehiclePage() {
           </div>
 
           <div>
-            <div className="mb-1 text-[10px] uppercase tracking-[0.06em] text-[#555]">Km relevé</div>
+            <div className="mb-1 text-[10px] uppercase tracking-[0.06em] text-[#555]">
+              Km relevé
+            </div>
             <input
               value={mileageInput}
               onChange={(e) => setMileageInput(e.target.value)}
@@ -738,13 +873,39 @@ export default function VehiclePage() {
         </div>
 
         {[
-          { label: 'Pneus', sub: 'État des 4 pneus', value: pneusState, setter: setPneusState },
-          { label: 'Freins', sub: 'Avant et arrière', value: freinsState, setter: setFreinsState },
-          { label: 'Voyants tableau de bord', sub: voyantsState === 'ok' ? 'Aucun voyant allumé' : 'Voyants à détailler', value: voyantsState, setter: setVoyantsState },
-          { label: 'Maintenance', sub: `Prochain entretien : ${formatKm(nextServiceNum || null)} km`, value: maintenanceState, setter: setMaintenanceState },
+          {
+            label: 'Pneus',
+            sub: 'État des 4 pneus',
+            value: pneusState,
+            setter: setPneusState,
+          },
+          {
+            label: 'Freins',
+            sub: 'Avant et arrière',
+            value: freinsState,
+            setter: setFreinsState,
+          },
+          {
+            label: 'Voyants tableau de bord',
+            sub: voyantsState === 'ok' ? 'Aucun voyant allumé' : 'Voyants à détailler',
+            value: voyantsState,
+            setter: setVoyantsState,
+          },
+          {
+            label: 'Maintenance',
+            sub: `Prochain entretien : ${formatKm(nextServiceNum || null)} km`,
+            value: maintenanceState,
+            setter: setMaintenanceState,
+          },
         ].map((row) => (
           <div key={row.label}>
-            <div className={`mx-4 mb-2 flex items-center justify-between rounded-xl border border-[#2a2a2a] bg-[#1a1a1a] px-[14px] py-3 ${row.label === 'Voyants tableau de bord' && row.value !== 'ok' ? 'rounded-b-none' : ''}`}>
+            <div
+              className={`mx-4 mb-2 flex items-center justify-between rounded-xl border border-[#2a2a2a] bg-[#1a1a1a] px-[14px] py-3 ${
+                row.label === 'Voyants tableau de bord' && row.value !== 'ok'
+                  ? 'rounded-b-none'
+                  : ''
+              }`}
+            >
               <div>
                 <div className="text-[14px] text-[#e0e0e0]">{row.label}</div>
                 <div className="mt-0.5 text-[11px] text-[#555]">{row.sub}</div>
@@ -756,7 +917,10 @@ export default function VehiclePage() {
                     key={state}
                     type="button"
                     onClick={() => row.setter(state)}
-                    className={`rounded-full border px-[13px] py-[6px] text-[12px] font-medium ${getTriageButtonClass(row.value === state, state)}`}
+                    className={`rounded-full border px-[13px] py-[6px] text-[12px] font-medium ${getTriageButtonClass(
+                      row.value === state,
+                      state
+                    )}`}
                   >
                     {triageLabel(state)}
                   </button>
@@ -787,7 +951,9 @@ export default function VehiclePage() {
         <div className="mx-4 mb-2 flex items-center justify-between rounded-xl border border-[#2a2a2a] bg-[#1a1a1a] px-[14px] py-3">
           <div>
             <div className="text-[14px] text-[#e0e0e0]">Carrosserie</div>
-            <div className="mt-0.5 text-[11px] text-[#555]">Rayures, bosses, dommages visibles</div>
+            <div className="mt-0.5 text-[11px] text-[#555]">
+              Rayures, bosses, dommages visibles
+            </div>
           </div>
 
           <div className="flex gap-[5px]">
@@ -796,7 +962,10 @@ export default function VehiclePage() {
                 key={state}
                 type="button"
                 onClick={() => setCarrosserieState(state)}
-                className={`rounded-full border px-[13px] py-[6px] text-[12px] font-medium ${getTriageButtonClass(carrosserieState === state, state)}`}
+                className={`rounded-full border px-[13px] py-[6px] text-[12px] font-medium ${getTriageButtonClass(
+                  carrosserieState === state,
+                  state
+                )}`}
               >
                 {triageLabel(state)}
               </button>
@@ -805,15 +974,37 @@ export default function VehiclePage() {
         </div>
 
         {[
-          { label: 'Voiture propre', sub: 'Intérieur et extérieur', checked: carClean, setChecked: setCarClean },
-          { label: 'Prête pour LLD', sub: 'Disponible pour contrat longue durée', checked: readyLongTerm, setChecked: setReadyLongTerm },
-          { label: 'Prête à vendre', sub: 'En état de vente', checked: readyForSale, setChecked: setReadyForSale },
-          { label: 'Nouveau sinistre', sub: 'Accident ou dommage à déclarer', checked: sinistre, setChecked: setSinistre },
+          {
+            label: 'Voiture propre',
+            sub: 'Intérieur et extérieur',
+            checked: carClean,
+            setChecked: setCarClean,
+          },
+          {
+            label: 'Prête pour LLD',
+            sub: 'Disponible pour contrat longue durée',
+            checked: readyLongTerm,
+            setChecked: setReadyLongTerm,
+          },
+          {
+            label: 'Prête à vendre',
+            sub: 'En état de vente',
+            checked: readyForSale,
+            setChecked: setReadyForSale,
+          },
+          {
+            label: 'Nouveau sinistre',
+            sub: 'Accident ou dommage à déclarer',
+            checked: sinistre,
+            setChecked: setSinistre,
+          },
         ].map((row) => (
           <label
             key={row.label}
             className={`mx-4 mb-2 flex cursor-pointer items-center gap-3 rounded-xl border px-[14px] py-3 ${
-              row.checked ? 'border-[#185FA5] bg-[#0a1f35]' : 'border-[#2a2a2a] bg-[#1a1a1a]'
+              row.checked
+                ? 'border-[#185FA5] bg-[#0a1f35]'
+                : 'border-[#2a2a2a] bg-[#1a1a1a]'
             }`}
           >
             <input
@@ -823,7 +1014,13 @@ export default function VehiclePage() {
               className="h-[18px] w-[18px] shrink-0 accent-[#185FA5]"
             />
             <div>
-              <div className={`text-[14px] ${row.checked ? 'text-[#5aadff]' : 'text-[#e0e0e0]'}`}>{row.label}</div>
+              <div
+                className={`text-[14px] ${
+                  row.checked ? 'text-[#5aadff]' : 'text-[#e0e0e0]'
+                }`}
+              >
+                {row.label}
+              </div>
               <div className="mt-0.5 text-[11px] text-[#555]">{row.sub}</div>
             </div>
           </label>

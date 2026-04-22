@@ -12,6 +12,9 @@ type Vehicle = {
   status: string | null
   bodywork_status: string | null
   notes: string | null
+  is_archived?: boolean | null
+  archived_at?: string | null
+  archive_reason?: string | null
 }
 
 export default async function Home() {
