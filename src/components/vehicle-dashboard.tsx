@@ -404,134 +404,122 @@ export default function VehicleDashboard({ vehicles }: Props) {
           </div>
 
           <div className="text-right text-zinc-300 text-lg md:text-2xl">
-            {filteredVehicles.length} véhicule{filteredVehicles.length > 1 ? 's' : ''}
+            {showDeletedPanel
+              ? `${archivedVehicles.length} supprimé${archivedVehicles.length > 1 ? 's' : ''}`
+              : `${filteredVehicles.length} véhicule${filteredVehicles.length > 1 ? 's' : ''}`}
           </div>
         </div>
 
-        <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <button
-            type="button"
-            onClick={() => {
-              setShowDeletedPanel(false)
-              setFilter(filter === 'dispo' ? 'all' : 'dispo')
-            }}
-            className={`rounded-3xl bg-[#1E1E1E] p-6 text-left transition border ${
-              filter === 'dispo' ? 'border-emerald-500/60' : 'border-transparent'
-            }`}
-          >
-            <p className="text-zinc-300 text-lg">Disponibles</p>
-            <p className="mt-4 text-5xl font-semibold text-emerald-400">
-              {countAvailable(vehicleList)}
-            </p>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setShowDeletedPanel(false)
-              setFilter(filter === 'contrat' ? 'all' : 'contrat')
-            }}
-            className={`rounded-3xl bg-[#1E1E1E] p-6 text-left transition border ${
-              filter === 'contrat' ? 'border-[#6FAAF2]/60' : 'border-transparent'
-            }`}
-          >
-            <p className="text-zinc-300 text-lg">En contrat LLD</p>
-            <p className="mt-4 text-5xl font-semibold text-[#6FAAF2]">
-              {countContract(vehicleList)}
-            </p>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setShowDeletedPanel(false)
-              setFilter(filter === 'carro' ? 'all' : 'carro')
-            }}
-            className={`rounded-3xl bg-[#1E1E1E] p-6 text-left transition border ${
-              filter === 'carro' ? 'border-[#F2AE2E]/60' : 'border-transparent'
-            }`}
-          >
-            <p className="text-zinc-300 text-lg">Carrosserie</p>
-            <p className="mt-4 text-5xl font-semibold text-[#F2AE2E]">
-              {countBodywork(vehicleList)}
-            </p>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setShowDeletedPanel(false)
-              setFilter(filter === 'entretien' ? 'all' : 'entretien')
-            }}
-            className={`rounded-3xl bg-[#1E1E1E] p-6 text-left transition border ${
-              filter === 'entretien' ? 'border-[#F55252]/60' : 'border-transparent'
-            }`}
-          >
-            <p className="text-zinc-300 text-lg">Entretien dû</p>
-            <p className="mt-4 text-5xl font-semibold text-[#F55252]">
-              {countMaintenance(vehicleList)}
-            </p>
-          </button>
-        </div>
-
-        <div className="mb-6">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => {
-              setShowDeletedPanel(false)
-              setSearch(e.target.value)
-            }}
-            placeholder="Rechercher par immatriculation, marque, parking, statut ou note"
-            className="w-full rounded-2xl border border-white/10 bg-[#1E1E1E] px-5 py-4 text-lg text-white outline-none placeholder:text-zinc-500"
-          />
-        </div>
-
-        <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap gap-3">
-            {[
-              ['all', 'Tous'],
-              ['dispo', 'Disponibles'],
-              ['contrat', 'En contrat'],
-              ['carro', 'Carrosserie'],
-              ['entretien', 'Entretien'],
-            ].map(([key, label]) => (
+        {!showDeletedPanel && (
+          <>
+            <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <button
-                key={key}
-                onClick={() => {
-                  setShowDeletedPanel(false)
-                  setFilter(key)
-                }}
-                className={`rounded-2xl border px-6 py-3 text-lg ${
-                  filter === key && !showDeletedPanel
-                    ? 'bg-white text-black border-white'
-                    : 'border-white/20 text-white'
+                type="button"
+                onClick={() => setFilter(filter === 'dispo' ? 'all' : 'dispo')}
+                className={`rounded-3xl bg-[#1E1E1E] p-6 text-left transition border ${
+                  filter === 'dispo' ? 'border-emerald-500/60' : 'border-transparent'
                 }`}
               >
-                {label}
+                <p className="text-zinc-300 text-lg">Disponibles</p>
+                <p className="mt-4 text-5xl font-semibold text-emerald-400">
+                  {countAvailable(vehicleList)}
+                </p>
               </button>
-            ))}
-          </div>
 
-          <div className="inline-flex w-fit rounded-2xl border border-white/15 bg-[#1E1E1E] p-1">
-            <button
-              onClick={() => setViewMode('cards')}
-              className={`rounded-xl px-5 py-2 text-sm md:text-base ${
-                viewMode === 'cards' ? 'bg-white text-black' : 'text-zinc-300'
-              }`}
-            >
-              Vue cartes
-            </button>
-            <button
-              onClick={() => setViewMode('list')}
-              className={`rounded-xl px-5 py-2 text-sm md:text-base ${
-                viewMode === 'list' ? 'bg-white text-black' : 'text-zinc-300'
-              }`}
-            >
-              Vue liste
-            </button>
-          </div>
-        </div>
+              <button
+                type="button"
+                onClick={() => setFilter(filter === 'contrat' ? 'all' : 'contrat')}
+                className={`rounded-3xl bg-[#1E1E1E] p-6 text-left transition border ${
+                  filter === 'contrat' ? 'border-[#6FAAF2]/60' : 'border-transparent'
+                }`}
+              >
+                <p className="text-zinc-300 text-lg">En contrat LLD</p>
+                <p className="mt-4 text-5xl font-semibold text-[#6FAAF2]">
+                  {countContract(vehicleList)}
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFilter(filter === 'carro' ? 'all' : 'carro')}
+                className={`rounded-3xl bg-[#1E1E1E] p-6 text-left transition border ${
+                  filter === 'carro' ? 'border-[#F2AE2E]/60' : 'border-transparent'
+                }`}
+              >
+                <p className="text-zinc-300 text-lg">Carrosserie</p>
+                <p className="mt-4 text-5xl font-semibold text-[#F2AE2E]">
+                  {countBodywork(vehicleList)}
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFilter(filter === 'entretien' ? 'all' : 'entretien')}
+                className={`rounded-3xl bg-[#1E1E1E] p-6 text-left transition border ${
+                  filter === 'entretien' ? 'border-[#F55252]/60' : 'border-transparent'
+                }`}
+              >
+                <p className="text-zinc-300 text-lg">Entretien dû</p>
+                <p className="mt-4 text-5xl font-semibold text-[#F55252]">
+                  {countMaintenance(vehicleList)}
+                </p>
+              </button>
+            </div>
+
+            <div className="mb-6">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Rechercher par immatriculation, marque, parking, statut ou note"
+                className="w-full rounded-2xl border border-white/10 bg-[#1E1E1E] px-5 py-4 text-lg text-white outline-none placeholder:text-zinc-500"
+              />
+            </div>
+
+            <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap gap-3">
+                {[
+                  ['all', 'Tous'],
+                  ['dispo', 'Disponibles'],
+                  ['contrat', 'En contrat'],
+                  ['carro', 'Carrosserie'],
+                  ['entretien', 'Entretien'],
+                ].map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => setFilter(key)}
+                    className={`rounded-2xl border px-6 py-3 text-lg ${
+                      filter === key
+                        ? 'bg-white text-black border-white'
+                        : 'border-white/20 text-white'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="inline-flex w-fit rounded-2xl border border-white/15 bg-[#1E1E1E] p-1">
+                <button
+                  onClick={() => setViewMode('cards')}
+                  className={`rounded-xl px-5 py-2 text-sm md:text-base ${
+                    viewMode === 'cards' ? 'bg-white text-black' : 'text-zinc-300'
+                  }`}
+                >
+                  Vue cartes
+                </button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`rounded-xl px-5 py-2 text-sm md:text-base ${
+                    viewMode === 'list' ? 'bg-white text-black' : 'text-zinc-300'
+                  }`}
+                >
+                  Vue liste
+                </button>
+              </div>
+            </div>
+          </>
+        )}
 
         {actionMessage ? (
           <div className="mb-6 rounded-2xl border border-white/10 bg-[#1E1E1E] px-4 py-3 text-sm text-zinc-300">
@@ -551,7 +539,10 @@ export default function VehicleDashboard({ vehicles }: Props) {
 
               <button
                 type="button"
-                onClick={() => setShowDeletedPanel(false)}
+                onClick={() => {
+                  setShowDeletedPanel(false)
+                  setFilter('all')
+                }}
                 className="rounded-2xl border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5"
               >
                 Retour aux véhicules actifs
@@ -771,6 +762,20 @@ export default function VehicleDashboard({ vehicles }: Props) {
         <>
           <div className="fixed inset-0 z-40 bg-black/60" onClick={() => setSidebarOpen(false)} />
           <div className="fixed left-0 top-0 z-50 h-full w-[320px] max-w-[85vw] border-r border-white/10 bg-[#121212] p-5 shadow-2xl">
+            <div className="mb-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setSidebarOpen(false)
+                  setShowDeletedPanel(false)
+                  setFilter('all')
+                }}
+                className="w-full rounded-2xl border border-white/10 bg-[#1E1E1E] px-4 py-4 text-left text-lg font-semibold hover:bg-white/5"
+              >
+                Menu principal
+              </button>
+            </div>
+
             <div className="mb-6 flex items-center justify-between">
               <h2 className="text-2xl font-bold">Menu</h2>
               <button
