@@ -58,6 +58,7 @@ function getStatusBadge(status: string | null) {
   if (s.includes('contrat')) return 'bg-[#DCE9F9] text-[#245B9B]'
   if (s.includes('carrosserie')) return 'bg-[#F2E6D3] text-[#8B5A1A]'
   if (s.includes('entretien')) return 'bg-[#3a0f0f] text-[#ff6b6b]'
+  if (s.includes('indispo')) return 'bg-zinc-700 text-zinc-200'
   return 'bg-zinc-700 text-zinc-100'
 }
 
@@ -102,19 +103,25 @@ function daysLeftFromArchive(archivedAt: string | null | undefined) {
 
 function countAvailable(vehicles: Vehicle[]) {
   return vehicles.filter(
-    (v) => !(v.is_archived ?? false) && (v.status || '').toLowerCase().includes('disponible')
+    (v) =>
+      !(v.is_archived ?? false) &&
+      (v.status || '').toLowerCase().includes('disponible')
   ).length
 }
 
 function countContract(vehicles: Vehicle[]) {
   return vehicles.filter(
-    (v) => !(v.is_archived ?? false) && (v.status || '').toLowerCase().includes('contrat')
+    (v) =>
+      !(v.is_archived ?? false) &&
+      (v.status || '').toLowerCase().includes('contrat')
   ).length
 }
 
 function countBodywork(vehicles: Vehicle[]) {
   return vehicles.filter(
-    (v) => !(v.is_archived ?? false) && (v.status || '').toLowerCase().includes('carrosserie')
+    (v) =>
+      !(v.is_archived ?? false) &&
+      (v.status || '').toLowerCase().includes('carrosserie')
   ).length
 }
 
@@ -147,7 +154,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
   const [vehicleList, setVehicleList] = useState<Vehicle[]>(vehicles)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
-  const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards')
+  const [viewMode, setViewMode] = useState<'cards' | 'list' | 'parking'>('cards')
 
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showDeletedPanel, setShowDeletedPanel] = useState(false)
@@ -162,6 +169,8 @@ export default function VehicleDashboard({ vehicles }: Props) {
   const [savingEdit, setSavingEdit] = useState(false)
   const [restoringId, setRestoringId] = useState<number | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
+
+  const [selectedParking, setSelectedParking] = useState<string | null>(null)
 
   const activeVehicles = useMemo(
     () => vehicleList.filter((v) => !(v.is_archived ?? false)),
@@ -200,13 +209,17 @@ export default function VehicleDashboard({ vehicles }: Props) {
 
       let matchesFilter = true
       if (filter === 'dispo') {
-        matchesFilter = (vehicle.status || '').toLowerCase().includes('disponible')
+        matchesFilter = (vehicle.status || '')
+          .toLowerCase()
+          .includes('disponible')
       }
       if (filter === 'contrat') {
         matchesFilter = (vehicle.status || '').toLowerCase().includes('contrat')
       }
       if (filter === 'carro') {
-        matchesFilter = (vehicle.status || '').toLowerCase().includes('carrosserie')
+        matchesFilter = (vehicle.status || '')
+          .toLowerCase()
+          .includes('carrosserie')
       }
       if (filter === 'entretien') {
         const mileage = vehicle.mileage || 0
@@ -217,6 +230,31 @@ export default function VehicleDashboard({ vehicles }: Props) {
       return matchesSearch && matchesFilter
     })
   }, [activeVehicles, search, filter])
+
+  const parkingGroups = useMemo(() => {
+    const groups = new Map<string, Vehicle[]>()
+
+    for (const vehicle of activeVehicles) {
+      const parking = (vehicle.parking_location || '').trim() || 'Sans parking'
+      if (!groups.has(parking)) groups.set(parking, [])
+      groups.get(parking)!.push(vehicle)
+    }
+
+    return Array.from(groups.entries())
+      .map(([parking, items]) => ({
+        parking,
+        vehicles: items.sort((a, b) =>
+          (a.license_plate || '').localeCompare(b.license_plate || '')
+        ),
+      }))
+      .sort((a, b) => a.parking.localeCompare(b.parking))
+  }, [activeVehicles])
+
+  const selectedParkingVehicles = useMemo(() => {
+    if (!selectedParking) return []
+    const group = parkingGroups.find((g) => g.parking === selectedParking)
+    return group ? group.vehicles : []
+  }, [parkingGroups, selectedParking])
 
   const updateAddForm = (key: keyof VehicleForm, value: string) =>
     setAddForm((prev) => ({ ...prev, [key]: value }))
@@ -241,6 +279,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
 
   async function handleAddVehicle() {
     setActionMessage(null)
+
     if (!addForm.license_plate.trim()) {
       setActionMessage("L'immatriculation est obligatoire.")
       return
@@ -253,7 +292,9 @@ export default function VehicleDashboard({ vehicles }: Props) {
       brand: addForm.brand.trim() || null,
       model: addForm.model.trim() || null,
       mileage: addForm.mileage ? Number(addForm.mileage) : null,
-      next_service_km: addForm.next_service_km ? Number(addForm.next_service_km) : null,
+      next_service_km: addForm.next_service_km
+        ? Number(addForm.next_service_km)
+        : null,
       parking_location: addForm.parking_location.trim() || null,
       status: addForm.status.trim() || null,
       bodywork_status: addForm.bodywork_status.trim() || null,
@@ -297,7 +338,9 @@ export default function VehicleDashboard({ vehicles }: Props) {
       brand: editForm.brand.trim() || null,
       model: editForm.model.trim() || null,
       mileage: editForm.mileage ? Number(editForm.mileage) : null,
-      next_service_km: editForm.next_service_km ? Number(editForm.next_service_km) : null,
+      next_service_km: editForm.next_service_km
+        ? Number(editForm.next_service_km)
+        : null,
       parking_location: editForm.parking_location.trim() || null,
       status: editForm.status.trim() || null,
       bodywork_status: editForm.bodywork_status.trim() || null,
@@ -431,19 +474,29 @@ export default function VehicleDashboard({ vehicles }: Props) {
 
           <div className="text-right text-zinc-300 text-lg md:text-2xl">
             {showDeletedPanel
-              ? `${archivedVehicles.length} supprimé${archivedVehicles.length > 1 ? 's' : ''}`
-              : `${filteredVehicles.length} véhicule${filteredVehicles.length > 1 ? 's' : ''}`}
+              ? `${archivedVehicles.length} supprimé${
+                  archivedVehicles.length > 1 ? 's' : ''
+                }`
+              : viewMode === 'parking'
+              ? `${parkingGroups.length} parking${
+                  parkingGroups.length > 1 ? 's' : ''
+                }`
+              : `${filteredVehicles.length} véhicule${
+                  filteredVehicles.length > 1 ? 's' : ''
+                }`}
           </div>
         </div>
 
-        {!showDeletedPanel && (
+        {!showDeletedPanel && viewMode !== 'parking' && (
           <>
             <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <button
                 type="button"
                 onClick={() => setFilter(filter === 'dispo' ? 'all' : 'dispo')}
                 className={`rounded-3xl bg-[#1E1E1E] p-6 text-left transition border ${
-                  filter === 'dispo' ? 'border-emerald-500/60' : 'border-transparent'
+                  filter === 'dispo'
+                    ? 'border-emerald-500/60'
+                    : 'border-transparent'
                 }`}
               >
                 <p className="text-zinc-300 text-lg">Disponibles</p>
@@ -456,7 +509,9 @@ export default function VehicleDashboard({ vehicles }: Props) {
                 type="button"
                 onClick={() => setFilter(filter === 'contrat' ? 'all' : 'contrat')}
                 className={`rounded-3xl bg-[#1E1E1E] p-6 text-left transition border ${
-                  filter === 'contrat' ? 'border-[#6FAAF2]/60' : 'border-transparent'
+                  filter === 'contrat'
+                    ? 'border-[#6FAAF2]/60'
+                    : 'border-transparent'
                 }`}
               >
                 <p className="text-zinc-300 text-lg">En contrat LLD</p>
@@ -469,7 +524,9 @@ export default function VehicleDashboard({ vehicles }: Props) {
                 type="button"
                 onClick={() => setFilter(filter === 'carro' ? 'all' : 'carro')}
                 className={`rounded-3xl bg-[#1E1E1E] p-6 text-left transition border ${
-                  filter === 'carro' ? 'border-[#F2AE2E]/60' : 'border-transparent'
+                  filter === 'carro'
+                    ? 'border-[#F2AE2E]/60'
+                    : 'border-transparent'
                 }`}
               >
                 <p className="text-zinc-300 text-lg">Carrosserie</p>
@@ -480,9 +537,13 @@ export default function VehicleDashboard({ vehicles }: Props) {
 
               <button
                 type="button"
-                onClick={() => setFilter(filter === 'entretien' ? 'all' : 'entretien')}
+                onClick={() =>
+                  setFilter(filter === 'entretien' ? 'all' : 'entretien')
+                }
                 className={`rounded-3xl bg-[#1E1E1E] p-6 text-left transition border ${
-                  filter === 'entretien' ? 'border-[#F55252]/60' : 'border-transparent'
+                  filter === 'entretien'
+                    ? 'border-[#F55252]/60'
+                    : 'border-transparent'
                 }`}
               >
                 <p className="text-zinc-300 text-lg">Entretien dû</p>
@@ -529,7 +590,9 @@ export default function VehicleDashboard({ vehicles }: Props) {
                 <button
                   onClick={() => setViewMode('cards')}
                   className={`rounded-xl px-5 py-2 text-sm md:text-base ${
-                    viewMode === 'cards' ? 'bg-white text-black' : 'text-zinc-300'
+                    viewMode === 'cards'
+                      ? 'bg-white text-black'
+                      : 'text-zinc-300'
                   }`}
                 >
                   Vue cartes
@@ -542,9 +605,50 @@ export default function VehicleDashboard({ vehicles }: Props) {
                 >
                   Vue liste
                 </button>
+                <button
+                  onClick={() => {
+                    setSelectedParking(null)
+                    setViewMode('parking')
+                  }}
+                  className={`rounded-xl px-5 py-2 text-sm md:text-base ${
+                    viewMode === 'parking'
+                      ? 'bg-white text-black'
+                      : 'text-zinc-300'
+                  }`}
+                >
+                  Vue parkings
+                </button>
               </div>
             </div>
           </>
+        )}
+
+        {!showDeletedPanel && viewMode === 'parking' && (
+          <div className="mb-6 flex justify-end">
+            <div className="inline-flex w-fit rounded-2xl border border-white/15 bg-[#1E1E1E] p-1">
+              <button
+                onClick={() => setViewMode('cards')}
+                className="rounded-xl px-5 py-2 text-sm text-zinc-300 md:text-base"
+              >
+                Vue cartes
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className="rounded-xl px-5 py-2 text-sm text-zinc-300 md:text-base"
+              >
+                Vue liste
+              </button>
+              <button
+                onClick={() => {
+                  setSelectedParking(null)
+                  setViewMode('parking')
+                }}
+                className="rounded-xl bg-white px-5 py-2 text-sm text-black md:text-base"
+              >
+                Vue parkings
+              </button>
+            </div>
+          </div>
         )}
 
         {actionMessage ? (
@@ -597,10 +701,13 @@ export default function VehicleDashboard({ vehicles }: Props) {
                         <div className="mt-2 text-sm text-zinc-500">
                           Archivé le{' '}
                           {vehicle.archived_at
-                            ? new Date(vehicle.archived_at).toLocaleDateString('fr-FR')
+                            ? new Date(vehicle.archived_at).toLocaleDateString(
+                                'fr-FR'
+                              )
                             : '—'}{' '}
                           • {daysLeftFromArchive(vehicle.archived_at)} jour
-                          {daysLeftFromArchive(vehicle.archived_at) > 1 ? 's' : ''} restants
+                          {daysLeftFromArchive(vehicle.archived_at) > 1 ? 's' : ''}{' '}
+                          restants
                         </div>
                       </div>
 
@@ -610,7 +717,9 @@ export default function VehicleDashboard({ vehicles }: Props) {
                         disabled={restoringId === vehicle.id}
                         className="rounded-2xl bg-white px-5 py-3 font-semibold text-black disabled:opacity-50"
                       >
-                        {restoringId === vehicle.id ? 'Restauration...' : 'Restaurer'}
+                        {restoringId === vehicle.id
+                          ? 'Restauration...'
+                          : 'Restaurer'}
                       </button>
                     </div>
                   </div>
@@ -618,6 +727,167 @@ export default function VehicleDashboard({ vehicles }: Props) {
               </div>
             )}
           </div>
+        ) : viewMode === 'parking' ? (
+          selectedParking ? (
+            <div className="rounded-[28px] border border-white/10 bg-[#1E1E1E] p-6">
+              <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold">{selectedParking}</h2>
+                  <p className="mt-1 text-zinc-400">
+                    {selectedParkingVehicles.length} véhicule
+                    {selectedParkingVehicles.length > 1 ? 's' : ''} dans ce parking
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedParking(null)}
+                  className="rounded-2xl border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5"
+                >
+                  Retour aux parkings
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {selectedParkingVehicles.map((vehicle) => (
+                  <div
+                    key={vehicle.id}
+                    className="rounded-2xl border border-white/10 bg-[#151515] px-5 py-5"
+                  >
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="space-y-3">
+                        <Link
+                          href={`/vehicles/${vehicle.id}`}
+                          className="inline-flex w-fit rounded-2xl bg-[#1B1B1B] px-4 py-2 text-xl font-semibold tracking-wide transition hover:bg-[#2a2a2a]"
+                        >
+                          {vehicle.license_plate}
+                        </Link>
+
+                        <div>
+                          <p className="text-zinc-400">Véhicule</p>
+                          <p className="text-2xl font-semibold text-white">
+                            {vehicle.brand} {vehicle.model}
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap gap-6 text-zinc-300">
+                          <div>
+                            <p className="text-sm text-zinc-500">Km</p>
+                            <p className="text-lg">{formatKm(vehicle.mileage)} km</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-zinc-500">Entretien</p>
+                            <p className="text-lg">
+                              {formatKm(vehicle.next_service_km)} km
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-zinc-500">Carrosserie</p>
+                            <p
+                              className={`text-lg font-semibold ${getBodyworkColor(
+                                vehicle.bodywork_status
+                              )}`}
+                            >
+                              {getBodyworkLabel(vehicle.bodywork_status)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-3">
+                        <div
+                          className={`inline-flex w-fit rounded-full px-5 py-2 text-base font-semibold ${getStatusBadge(
+                            vehicle.status
+                          )}`}
+                        >
+                          {vehicle.status || '—'}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => openManage(vehicle)}
+                          className="rounded-2xl border border-white/15 px-4 py-2 text-sm font-medium text-white hover:bg-white/5"
+                        >
+                          Gérer
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 h-3 w-full rounded-full bg-[#101010]">
+                      <div
+                        className={`h-3 rounded-full ${getProgressColor(vehicle)}`}
+                        style={{ width: `${getProgressPercent(vehicle)}%` }}
+                      />
+                    </div>
+
+                    {vehicle.notes ? (
+                      <p className="mt-4 text-sm text-zinc-400">{vehicle.notes}</p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+              {parkingGroups.length === 0 ? (
+                <div className="rounded-[28px] border border-white/10 bg-[#1E1E1E] p-6 text-zinc-400">
+                  Aucun parking trouvé.
+                </div>
+              ) : (
+                parkingGroups.map((group) => (
+                  <button
+                    key={group.parking}
+                    type="button"
+                    onClick={() => setSelectedParking(group.parking)}
+                    className="rounded-[28px] border border-white/10 bg-[#1E1E1E] p-6 text-left transition hover:bg-[#242424]"
+                  >
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <h2 className="text-2xl font-bold text-white">
+                        {group.parking}
+                      </h2>
+                      <span className="rounded-full border border-white/10 bg-[#151515] px-3 py-1 text-sm text-zinc-300">
+                        {group.vehicles.length}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {group.vehicles.slice(0, 4).map((vehicle) => (
+                        <div
+                          key={vehicle.id}
+                          className="flex items-center justify-between rounded-xl bg-[#151515] px-3 py-3"
+                        >
+                          <div>
+                            <div className="font-semibold text-white">
+                              {vehicle.license_plate}
+                            </div>
+                            <div className="text-sm text-zinc-400">
+                              {vehicle.brand} {vehicle.model}
+                            </div>
+                          </div>
+
+                          <div
+                            className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${getStatusBadge(
+                              vehicle.status
+                            )}`}
+                          >
+                            {vehicle.status || '—'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {group.vehicles.length > 4 ? (
+                      <div className="mt-4 text-sm text-zinc-400">
+                        + {group.vehicles.length - 4} autre
+                        {group.vehicles.length - 4 > 1 ? 's' : ''} véhicule
+                        {group.vehicles.length - 4 > 1 ? 's' : ''}
+                      </div>
+                    ) : null}
+                  </button>
+                ))
+              )}
+            </div>
+          )
         ) : viewMode === 'cards' ? (
           <div className="space-y-5">
             {filteredVehicles.map((vehicle) => (
@@ -728,8 +998,12 @@ export default function VehicleDashboard({ vehicles }: Props) {
                   className="grid grid-cols-1 gap-4 px-6 py-5 md:grid-cols-8 md:items-center hover:bg-white/[0.03] transition"
                 >
                   <Link href={`/vehicles/${vehicle.id}`} className="block">
-                    <p className="text-xs text-zinc-500 md:hidden">Immatriculation</p>
-                    <p className="font-semibold text-white">{vehicle.license_plate}</p>
+                    <p className="text-xs text-zinc-500 md:hidden">
+                      Immatriculation
+                    </p>
+                    <p className="font-semibold text-white">
+                      {vehicle.license_plate}
+                    </p>
                   </Link>
 
                   <Link href={`/vehicles/${vehicle.id}`} className="block">
@@ -746,12 +1020,16 @@ export default function VehicleDashboard({ vehicles }: Props) {
 
                   <Link href={`/vehicles/${vehicle.id}`} className="block">
                     <p className="text-xs text-zinc-500 md:hidden">Entretien</p>
-                    <p className="text-zinc-200">{formatKm(vehicle.next_service_km)} km</p>
+                    <p className="text-zinc-200">
+                      {formatKm(vehicle.next_service_km)} km
+                    </p>
                   </Link>
 
                   <Link href={`/vehicles/${vehicle.id}`} className="block">
                     <p className="text-xs text-zinc-500 md:hidden">Parking</p>
-                    <p className="text-zinc-200">{vehicle.parking_location || '—'}</p>
+                    <p className="text-zinc-200">
+                      {vehicle.parking_location || '—'}
+                    </p>
                   </Link>
 
                   <Link href={`/vehicles/${vehicle.id}`} className="block">
@@ -767,7 +1045,11 @@ export default function VehicleDashboard({ vehicles }: Props) {
 
                   <Link href={`/vehicles/${vehicle.id}`} className="block">
                     <p className="text-xs text-zinc-500 md:hidden">Carrosserie</p>
-                    <p className={`font-medium ${getBodyworkColor(vehicle.bodywork_status)}`}>
+                    <p
+                      className={`font-medium ${getBodyworkColor(
+                        vehicle.bodywork_status
+                      )}`}
+                    >
                       {getBodyworkLabel(vehicle.bodywork_status)}
                     </p>
                   </Link>
@@ -808,10 +1090,13 @@ export default function VehicleDashboard({ vehicles }: Props) {
                   setSidebarOpen(false)
                   setShowDeletedPanel(false)
                   setFilter('all')
+                  setSelectedParking(null)
                 }}
                 className="flex-1 rounded-2xl border border-white/10 bg-[#1E1E1E] px-4 py-4 text-left hover:bg-white/5"
               >
-                <div className="text-sm font-medium text-zinc-400">Menu principal</div>
+                <div className="text-sm font-medium text-zinc-400">
+                  Menu principal
+                </div>
                 <div className="mt-1 text-2xl font-bold text-white">Menu</div>
               </button>
 
@@ -831,6 +1116,8 @@ export default function VehicleDashboard({ vehicles }: Props) {
                   setSidebarOpen(false)
                   setShowDeletedPanel(false)
                   setFilter('all')
+                  setSelectedParking(null)
+                  setViewMode('cards')
                 }}
                 className="w-full rounded-2xl border border-white/10 bg-[#1E1E1E] px-4 py-4 text-left text-lg font-semibold hover:bg-white/5"
               >
@@ -842,6 +1129,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
                 onClick={() => {
                   setSidebarOpen(false)
                   setShowDeletedPanel(true)
+                  setSelectedParking(null)
                 }}
                 className="w-full rounded-2xl border border-white/10 bg-[#1E1E1E] px-4 py-4 text-left text-lg font-semibold hover:bg-white/5"
               >
@@ -880,7 +1168,9 @@ export default function VehicleDashboard({ vehicles }: Props) {
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <input
                 value={addForm.license_plate}
-                onChange={(e) => updateAddForm('license_plate', e.target.value)}
+                onChange={(e) =>
+                  updateAddForm('license_plate', e.target.value)
+                }
                 placeholder="Immatriculation"
                 className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               />
@@ -905,14 +1195,18 @@ export default function VehicleDashboard({ vehicles }: Props) {
               />
               <input
                 value={addForm.next_service_km}
-                onChange={(e) => updateAddForm('next_service_km', e.target.value)}
+                onChange={(e) =>
+                  updateAddForm('next_service_km', e.target.value)
+                }
                 placeholder="Prochain entretien"
                 type="number"
                 className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               />
               <input
                 value={addForm.parking_location}
-                onChange={(e) => updateAddForm('parking_location', e.target.value)}
+                onChange={(e) =>
+                  updateAddForm('parking_location', e.target.value)
+                }
                 placeholder="Emplacement parking"
                 className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               />
@@ -931,7 +1225,9 @@ export default function VehicleDashboard({ vehicles }: Props) {
 
               <select
                 value={addForm.bodywork_status}
-                onChange={(e) => updateAddForm('bodywork_status', e.target.value)}
+                onChange={(e) =>
+                  updateAddForm('bodywork_status', e.target.value)
+                }
                 className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               >
                 <option value="ok">OK</option>
@@ -966,7 +1262,9 @@ export default function VehicleDashboard({ vehicles }: Props) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-3xl rounded-3xl border border-white/10 bg-[#1E1E1E] p-6">
             <div className="mb-6 flex items-center justify-between">
-              <h2 className="text-2xl font-bold">Gérer {selectedVehicle.license_plate}</h2>
+              <h2 className="text-2xl font-bold">
+                Gérer {selectedVehicle.license_plate}
+              </h2>
               <button
                 type="button"
                 onClick={() => setManageOpen(false)}
@@ -979,7 +1277,9 @@ export default function VehicleDashboard({ vehicles }: Props) {
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <input
                 value={editForm.license_plate}
-                onChange={(e) => updateEditForm('license_plate', e.target.value)}
+                onChange={(e) =>
+                  updateEditForm('license_plate', e.target.value)
+                }
                 placeholder="Immatriculation"
                 className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               />
@@ -1004,14 +1304,18 @@ export default function VehicleDashboard({ vehicles }: Props) {
               />
               <input
                 value={editForm.next_service_km}
-                onChange={(e) => updateEditForm('next_service_km', e.target.value)}
+                onChange={(e) =>
+                  updateEditForm('next_service_km', e.target.value)
+                }
                 placeholder="Prochain entretien"
                 type="number"
                 className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               />
               <input
                 value={editForm.parking_location}
-                onChange={(e) => updateEditForm('parking_location', e.target.value)}
+                onChange={(e) =>
+                  updateEditForm('parking_location', e.target.value)
+                }
                 placeholder="Emplacement parking"
                 className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               />
@@ -1030,7 +1334,9 @@ export default function VehicleDashboard({ vehicles }: Props) {
 
               <select
                 value={editForm.bodywork_status}
-                onChange={(e) => updateEditForm('bodywork_status', e.target.value)}
+                onChange={(e) =>
+                  updateEditForm('bodywork_status', e.target.value)
+                }
                 className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               >
                 <option value="ok">OK</option>
