@@ -101,16 +101,25 @@ function daysLeftFromArchive(archivedAt: string | null | undefined) {
 }
 
 function countAvailable(vehicles: Vehicle[]) {
-  return vehicles.filter(v => !(v.is_archived ?? false) && (v.status || '').toLowerCase().includes('disponible')).length
+  return vehicles.filter(
+    (v) => !(v.is_archived ?? false) && (v.status || '').toLowerCase().includes('disponible')
+  ).length
 }
+
 function countContract(vehicles: Vehicle[]) {
-  return vehicles.filter(v => !(v.is_archived ?? false) && (v.status || '').toLowerCase().includes('contrat')).length
+  return vehicles.filter(
+    (v) => !(v.is_archived ?? false) && (v.status || '').toLowerCase().includes('contrat')
+  ).length
 }
+
 function countBodywork(vehicles: Vehicle[]) {
-  return vehicles.filter(v => !(v.is_archived ?? false) && (v.status || '').toLowerCase().includes('carrosserie')).length
+  return vehicles.filter(
+    (v) => !(v.is_archived ?? false) && (v.status || '').toLowerCase().includes('carrosserie')
+  ).length
 }
+
 function countMaintenance(vehicles: Vehicle[]) {
-  return vehicles.filter(v => {
+  return vehicles.filter((v) => {
     if (v.is_archived ?? false) return false
     const mileage = v.mileage || 0
     const nextService = v.next_service_km || 0
@@ -155,14 +164,14 @@ export default function VehicleDashboard({ vehicles }: Props) {
   const [actionMessage, setActionMessage] = useState<string | null>(null)
 
   const activeVehicles = useMemo(
-    () => vehicleList.filter(v => !(v.is_archived ?? false)),
+    () => vehicleList.filter((v) => !(v.is_archived ?? false)),
     [vehicleList]
   )
 
   const archivedVehicles = useMemo(
     () =>
       vehicleList
-        .filter(v => v.is_archived ?? false)
+        .filter((v) => v.is_archived ?? false)
         .sort((a, b) => {
           const aTime = a.archived_at ? new Date(a.archived_at).getTime() : 0
           const bTime = b.archived_at ? new Date(b.archived_at).getTime() : 0
@@ -174,7 +183,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
   const filteredVehicles = useMemo(() => {
     const q = search.trim().toLowerCase()
 
-    return activeVehicles.filter(vehicle => {
+    return activeVehicles.filter((vehicle) => {
       const searchableText = [
         vehicle.license_plate || '',
         vehicle.parking_location || '',
@@ -190,9 +199,15 @@ export default function VehicleDashboard({ vehicles }: Props) {
       const matchesSearch = !q || searchableText.includes(q)
 
       let matchesFilter = true
-      if (filter === 'dispo') matchesFilter = (vehicle.status || '').toLowerCase().includes('disponible')
-      if (filter === 'contrat') matchesFilter = (vehicle.status || '').toLowerCase().includes('contrat')
-      if (filter === 'carro') matchesFilter = (vehicle.status || '').toLowerCase().includes('carrosserie')
+      if (filter === 'dispo') {
+        matchesFilter = (vehicle.status || '').toLowerCase().includes('disponible')
+      }
+      if (filter === 'contrat') {
+        matchesFilter = (vehicle.status || '').toLowerCase().includes('contrat')
+      }
+      if (filter === 'carro') {
+        matchesFilter = (vehicle.status || '').toLowerCase().includes('carrosserie')
+      }
       if (filter === 'entretien') {
         const mileage = vehicle.mileage || 0
         const nextService = vehicle.next_service_km || 0
@@ -204,10 +219,10 @@ export default function VehicleDashboard({ vehicles }: Props) {
   }, [activeVehicles, search, filter])
 
   const updateAddForm = (key: keyof VehicleForm, value: string) =>
-    setAddForm(prev => ({ ...prev, [key]: value }))
+    setAddForm((prev) => ({ ...prev, [key]: value }))
 
   const updateEditForm = (key: keyof VehicleForm, value: string) =>
-    setEditForm(prev => ({ ...prev, [key]: value }))
+    setEditForm((prev) => ({ ...prev, [key]: value }))
 
   function openManage(vehicle: Vehicle) {
     setSelectedVehicle(vehicle)
@@ -248,7 +263,11 @@ export default function VehicleDashboard({ vehicles }: Props) {
       archive_reason: null,
     }
 
-    const { data, error } = await supabase.from('vehicles').insert(payload).select('*').single()
+    const { data, error } = await supabase
+      .from('vehicles')
+      .insert(payload)
+      .select('*')
+      .single()
 
     if (error) {
       setActionMessage(`Erreur ajout : ${error.message}`)
@@ -257,7 +276,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
     }
 
     if (data) {
-      setVehicleList(prev => [data as Vehicle, ...prev])
+      setVehicleList((prev) => [data as Vehicle, ...prev])
       setActionMessage('Véhicule ajouté avec succès.')
     }
 
@@ -299,7 +318,9 @@ export default function VehicleDashboard({ vehicles }: Props) {
     }
 
     if (data) {
-      setVehicleList(prev => prev.map(v => (v.id === selectedVehicle.id ? (data as Vehicle) : v)))
+      setVehicleList((prev) =>
+        prev.map((v) => (v.id === selectedVehicle.id ? (data as Vehicle) : v))
+      )
       setSelectedVehicle(data as Vehicle)
       setActionMessage('Véhicule modifié avec succès.')
     }
@@ -337,10 +358,15 @@ export default function VehicleDashboard({ vehicles }: Props) {
       return
     }
 
-    setVehicleList(prev =>
-      prev.map(v =>
+    setVehicleList((prev) =>
+      prev.map((v) =>
         v.id === selectedVehicle.id
-          ? { ...v, is_archived: true, archived_at: archiveDate, archive_reason: 'deleted_by_user' }
+          ? {
+              ...v,
+              is_archived: true,
+              archived_at: archiveDate,
+              archive_reason: 'deleted_by_user',
+            }
           : v
       )
     )
@@ -370,8 +396,8 @@ export default function VehicleDashboard({ vehicles }: Props) {
       return
     }
 
-    setVehicleList(prev =>
-      prev.map(v =>
+    setVehicleList((prev) =>
+      prev.map((v) =>
         v.id === vehicle.id
           ? { ...v, is_archived: false, archived_at: null, archive_reason: null }
           : v
@@ -555,7 +581,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
               </div>
             ) : (
               <div className="space-y-4">
-                {archivedVehicles.map(vehicle => (
+                {archivedVehicles.map((vehicle) => (
                   <div
                     key={vehicle.id}
                     className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-4"
@@ -594,7 +620,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
           </div>
         ) : viewMode === 'cards' ? (
           <div className="space-y-5">
-            {filteredVehicles.map(vehicle => (
+            {filteredVehicles.map((vehicle) => (
               <div
                 key={vehicle.id}
                 className="rounded-[28px] bg-[#242424] px-6 py-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
@@ -647,7 +673,11 @@ export default function VehicleDashboard({ vehicles }: Props) {
 
                     <div>
                       <p className="text-zinc-400 text-lg">Carrosserie</p>
-                      <p className={`text-4xl font-semibold leading-tight ${getBodyworkColor(vehicle.bodywork_status)}`}>
+                      <p
+                        className={`text-4xl font-semibold leading-tight ${getBodyworkColor(
+                          vehicle.bodywork_status
+                        )}`}
+                      >
                         {getBodyworkLabel(vehicle.bodywork_status)}
                       </p>
                     </div>
@@ -692,7 +722,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
             </div>
 
             <div className="divide-y divide-white/10">
-              {filteredVehicles.map(vehicle => (
+              {filteredVehicles.map((vehicle) => (
                 <div
                   key={vehicle.id}
                   className="grid grid-cols-1 gap-4 px-6 py-5 md:grid-cols-8 md:items-center hover:bg-white/[0.03] transition"
@@ -704,7 +734,9 @@ export default function VehicleDashboard({ vehicles }: Props) {
 
                   <Link href={`/vehicles/${vehicle.id}`} className="block">
                     <p className="text-xs text-zinc-500 md:hidden">Véhicule</p>
-                    <p className="text-white">{vehicle.brand} {vehicle.model}</p>
+                    <p className="text-white">
+                      {vehicle.brand} {vehicle.model}
+                    </p>
                   </Link>
 
                   <Link href={`/vehicles/${vehicle.id}`} className="block">
@@ -724,7 +756,11 @@ export default function VehicleDashboard({ vehicles }: Props) {
 
                   <Link href={`/vehicles/${vehicle.id}`} className="block">
                     <p className="text-xs text-zinc-500 md:hidden">Statut</p>
-                    <span className={`inline-flex w-fit rounded-full px-3 py-1 text-sm font-medium ${getStatusBadge(vehicle.status)}`}>
+                    <span
+                      className={`inline-flex w-fit rounded-full px-3 py-1 text-sm font-medium ${getStatusBadge(
+                        vehicle.status
+                      )}`}
+                    >
                       {vehicle.status || '—'}
                     </span>
                   </Link>
@@ -760,9 +796,12 @@ export default function VehicleDashboard({ vehicles }: Props) {
 
       {sidebarOpen && (
         <>
-          <div className="fixed inset-0 z-40 bg-black/60" onClick={() => setSidebarOpen(false)} />
+          <div
+            className="fixed inset-0 z-40 bg-black/60"
+            onClick={() => setSidebarOpen(false)}
+          />
           <div className="fixed left-0 top-0 z-50 h-full w-[320px] max-w-[85vw] border-r border-white/10 bg-[#121212] p-5 shadow-2xl">
-            <div className="mb-4">
+            <div className="mb-6 flex items-start justify-between gap-3">
               <button
                 type="button"
                 onClick={() => {
@@ -770,14 +809,12 @@ export default function VehicleDashboard({ vehicles }: Props) {
                   setShowDeletedPanel(false)
                   setFilter('all')
                 }}
-                className="w-full rounded-2xl border border-white/10 bg-[#1E1E1E] px-4 py-4 text-left text-lg font-semibold hover:bg-white/5"
+                className="flex-1 rounded-2xl border border-white/10 bg-[#1E1E1E] px-4 py-4 text-left hover:bg-white/5"
               >
-                Menu principal
+                <div className="text-sm font-medium text-zinc-400">Menu principal</div>
+                <div className="mt-1 text-2xl font-bold text-white">Menu</div>
               </button>
-            </div>
 
-            <div className="mb-6 flex items-center justify-between">
-              <h2 className="text-2xl font-bold">Menu</h2>
               <button
                 type="button"
                 onClick={() => setSidebarOpen(false)}
@@ -841,14 +878,50 @@ export default function VehicleDashboard({ vehicles }: Props) {
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <input value={addForm.license_plate} onChange={(e) => updateAddForm('license_plate', e.target.value)} placeholder="Immatriculation" className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none" />
-              <input value={addForm.brand} onChange={(e) => updateAddForm('brand', e.target.value)} placeholder="Marque" className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none" />
-              <input value={addForm.model} onChange={(e) => updateAddForm('model', e.target.value)} placeholder="Modèle" className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none" />
-              <input value={addForm.mileage} onChange={(e) => updateAddForm('mileage', e.target.value)} placeholder="Kilométrage" type="number" className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none" />
-              <input value={addForm.next_service_km} onChange={(e) => updateAddForm('next_service_km', e.target.value)} placeholder="Prochain entretien" type="number" className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none" />
-              <input value={addForm.parking_location} onChange={(e) => updateAddForm('parking_location', e.target.value)} placeholder="Emplacement parking" className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none" />
+              <input
+                value={addForm.license_plate}
+                onChange={(e) => updateAddForm('license_plate', e.target.value)}
+                placeholder="Immatriculation"
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              />
+              <input
+                value={addForm.brand}
+                onChange={(e) => updateAddForm('brand', e.target.value)}
+                placeholder="Marque"
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              />
+              <input
+                value={addForm.model}
+                onChange={(e) => updateAddForm('model', e.target.value)}
+                placeholder="Modèle"
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              />
+              <input
+                value={addForm.mileage}
+                onChange={(e) => updateAddForm('mileage', e.target.value)}
+                placeholder="Kilométrage"
+                type="number"
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              />
+              <input
+                value={addForm.next_service_km}
+                onChange={(e) => updateAddForm('next_service_km', e.target.value)}
+                placeholder="Prochain entretien"
+                type="number"
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              />
+              <input
+                value={addForm.parking_location}
+                onChange={(e) => updateAddForm('parking_location', e.target.value)}
+                placeholder="Emplacement parking"
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              />
 
-              <select value={addForm.status} onChange={(e) => updateAddForm('status', e.target.value)} className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none">
+              <select
+                value={addForm.status}
+                onChange={(e) => updateAddForm('status', e.target.value)}
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              >
                 <option value="Disponible">Disponible</option>
                 <option value="En contrat LLD">En contrat LLD</option>
                 <option value="Carrosserie en cours">Carrosserie en cours</option>
@@ -856,14 +929,23 @@ export default function VehicleDashboard({ vehicles }: Props) {
                 <option value="Indisponible">Indisponible</option>
               </select>
 
-              <select value={addForm.bodywork_status} onChange={(e) => updateAddForm('bodywork_status', e.target.value)} className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none">
+              <select
+                value={addForm.bodywork_status}
+                onChange={(e) => updateAddForm('bodywork_status', e.target.value)}
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              >
                 <option value="ok">OK</option>
                 <option value="a_verifier">À vérifier</option>
                 <option value="en_cours">En réparation</option>
                 <option value="urgent">Urgent</option>
               </select>
 
-              <textarea value={addForm.notes} onChange={(e) => updateAddForm('notes', e.target.value)} placeholder="Notes" className="md:col-span-2 min-h-[120px] rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none" />
+              <textarea
+                value={addForm.notes}
+                onChange={(e) => updateAddForm('notes', e.target.value)}
+                placeholder="Notes"
+                className="md:col-span-2 min-h-[120px] rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              />
             </div>
 
             <div className="mt-6 flex justify-end">
@@ -895,14 +977,50 @@ export default function VehicleDashboard({ vehicles }: Props) {
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <input value={editForm.license_plate} onChange={(e) => updateEditForm('license_plate', e.target.value)} placeholder="Immatriculation" className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none" />
-              <input value={editForm.brand} onChange={(e) => updateEditForm('brand', e.target.value)} placeholder="Marque" className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none" />
-              <input value={editForm.model} onChange={(e) => updateEditForm('model', e.target.value)} placeholder="Modèle" className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none" />
-              <input value={editForm.mileage} onChange={(e) => updateEditForm('mileage', e.target.value)} placeholder="Kilométrage" type="number" className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none" />
-              <input value={editForm.next_service_km} onChange={(e) => updateEditForm('next_service_km', e.target.value)} placeholder="Prochain entretien" type="number" className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none" />
-              <input value={editForm.parking_location} onChange={(e) => updateEditForm('parking_location', e.target.value)} placeholder="Emplacement parking" className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none" />
+              <input
+                value={editForm.license_plate}
+                onChange={(e) => updateEditForm('license_plate', e.target.value)}
+                placeholder="Immatriculation"
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              />
+              <input
+                value={editForm.brand}
+                onChange={(e) => updateEditForm('brand', e.target.value)}
+                placeholder="Marque"
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              />
+              <input
+                value={editForm.model}
+                onChange={(e) => updateEditForm('model', e.target.value)}
+                placeholder="Modèle"
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              />
+              <input
+                value={editForm.mileage}
+                onChange={(e) => updateEditForm('mileage', e.target.value)}
+                placeholder="Kilométrage"
+                type="number"
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              />
+              <input
+                value={editForm.next_service_km}
+                onChange={(e) => updateEditForm('next_service_km', e.target.value)}
+                placeholder="Prochain entretien"
+                type="number"
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              />
+              <input
+                value={editForm.parking_location}
+                onChange={(e) => updateEditForm('parking_location', e.target.value)}
+                placeholder="Emplacement parking"
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              />
 
-              <select value={editForm.status} onChange={(e) => updateEditForm('status', e.target.value)} className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none">
+              <select
+                value={editForm.status}
+                onChange={(e) => updateEditForm('status', e.target.value)}
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              >
                 <option value="Disponible">Disponible</option>
                 <option value="En contrat LLD">En contrat LLD</option>
                 <option value="Carrosserie en cours">Carrosserie en cours</option>
@@ -910,14 +1028,23 @@ export default function VehicleDashboard({ vehicles }: Props) {
                 <option value="Indisponible">Indisponible</option>
               </select>
 
-              <select value={editForm.bodywork_status} onChange={(e) => updateEditForm('bodywork_status', e.target.value)} className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none">
+              <select
+                value={editForm.bodywork_status}
+                onChange={(e) => updateEditForm('bodywork_status', e.target.value)}
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              >
                 <option value="ok">OK</option>
                 <option value="a_verifier">À vérifier</option>
                 <option value="en_cours">En réparation</option>
                 <option value="urgent">Urgent</option>
               </select>
 
-              <textarea value={editForm.notes} onChange={(e) => updateEditForm('notes', e.target.value)} placeholder="Notes" className="md:col-span-2 min-h-[120px] rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none" />
+              <textarea
+                value={editForm.notes}
+                onChange={(e) => updateEditForm('notes', e.target.value)}
+                placeholder="Notes"
+                className="md:col-span-2 min-h-[120px] rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              />
             </div>
 
             <div className="mt-6 flex flex-wrap gap-3 justify-between">
