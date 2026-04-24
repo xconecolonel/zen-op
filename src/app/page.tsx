@@ -1,6 +1,9 @@
 import { supabase } from '@/lib/supabase'
 import VehicleDashboard from '@/components/vehicle-dashboard'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 type Vehicle = {
   id: number
   license_plate: string
@@ -27,8 +30,8 @@ export default async function Home() {
 
   if (error) {
     return (
-      <main className="min-h-screen bg-[#111111] text-white p-6">
-        <h1 className="text-3xl font-bold mb-6">Zen OP — Flotte véhicules</h1>
+      <main className="min-h-screen bg-[#111111] p-6 text-white">
+        <h1 className="mb-6 text-3xl font-bold">Zen OP — Flotte véhicules</h1>
         <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-red-200">
           Erreur Supabase : {error.message}
         </div>
