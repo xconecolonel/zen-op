@@ -529,7 +529,10 @@ export default function VehicleDashboard({ vehicles }: Props) {
     <div className="inline-flex w-fit rounded-2xl border border-white/15 bg-[#1E1E1E] p-1">
       <button
         type="button"
-        onClick={() => setViewMode('cards')}
+        onClick={() => {
+          setSelectedParking(null)
+          setViewMode('cards')
+        }}
         className={`rounded-xl px-5 py-2 text-sm md:text-base ${
           viewMode === 'cards' ? 'bg-white text-black' : 'text-zinc-300'
         }`}
@@ -538,7 +541,10 @@ export default function VehicleDashboard({ vehicles }: Props) {
       </button>
       <button
         type="button"
-        onClick={() => setViewMode('list')}
+        onClick={() => {
+          setSelectedParking(null)
+          setViewMode('list')
+        }}
         className={`rounded-xl px-5 py-2 text-sm md:text-base ${
           viewMode === 'list' ? 'bg-white text-black' : 'text-zinc-300'
         }`}
@@ -648,6 +654,91 @@ export default function VehicleDashboard({ vehicles }: Props) {
     </div>
   )
 
+  const renderVehicleList = (items: Vehicle[]) => (
+    <div className="overflow-hidden rounded-[28px] border border-white/10 bg-[#1E1E1E]">
+      <div className="hidden grid-cols-8 gap-4 border-b border-white/10 bg-[#181818] px-6 py-4 text-sm font-medium text-zinc-400 md:grid">
+        <div>Immatriculation</div>
+        <div>Véhicule</div>
+        <div>Km</div>
+        <div>Entretien</div>
+        <div>Parking</div>
+        <div>Statut</div>
+        <div>Carrosserie</div>
+        <div>Action</div>
+      </div>
+
+      <div className="divide-y divide-white/10">
+        {items.map((vehicle) => (
+          <div
+            key={vehicle.id}
+            className="grid grid-cols-1 gap-4 px-6 py-5 transition hover:bg-white/[0.03] md:grid-cols-8 md:items-center"
+          >
+            <Link href={`/vehicles/${vehicle.id}`} className="block">
+              <p className="text-xs text-zinc-500 md:hidden">Immatriculation</p>
+              <p className="font-semibold text-white">{vehicle.license_plate}</p>
+            </Link>
+
+            <Link href={`/vehicles/${vehicle.id}`} className="block">
+              <p className="text-xs text-zinc-500 md:hidden">Véhicule</p>
+              <p className="text-white">
+                {vehicle.brand} {vehicle.model}
+              </p>
+            </Link>
+
+            <Link href={`/vehicles/${vehicle.id}`} className="block">
+              <p className="text-xs text-zinc-500 md:hidden">Km</p>
+              <p className="text-zinc-200">{formatKm(vehicle.mileage)} km</p>
+            </Link>
+
+            <Link href={`/vehicles/${vehicle.id}`} className="block">
+              <p className="text-xs text-zinc-500 md:hidden">Entretien</p>
+              <p className="text-zinc-200">{formatKm(vehicle.next_service_km)} km</p>
+            </Link>
+
+            <Link href={`/vehicles/${vehicle.id}`} className="block">
+              <p className="text-xs text-zinc-500 md:hidden">Parking</p>
+              <p className="text-zinc-200">{vehicle.parking_location || '—'}</p>
+            </Link>
+
+            <Link href={`/vehicles/${vehicle.id}`} className="block">
+              <p className="text-xs text-zinc-500 md:hidden">Statut</p>
+              <span
+                className={`inline-flex w-fit rounded-full px-3 py-1 text-sm font-medium ${getStatusBadge(
+                  vehicle.status
+                )}`}
+              >
+                {getStatusLabel(vehicle.status)}
+              </span>
+            </Link>
+
+            <Link href={`/vehicles/${vehicle.id}`} className="block">
+              <p className="text-xs text-zinc-500 md:hidden">Carrosserie</p>
+              <p className={`font-medium ${getBodyworkColor(vehicle.bodywork_status)}`}>
+                {getBodyworkLabel(vehicle.bodywork_status)}
+              </p>
+            </Link>
+
+            <div>
+              <button
+                type="button"
+                onClick={() => openManage(vehicle)}
+                className="rounded-xl border border-white/15 px-4 py-2 text-sm font-medium text-white hover:bg-white/5"
+              >
+                Gérer
+              </button>
+            </div>
+
+            {vehicle.notes ? (
+              <div className="md:col-span-8">
+                <p className="text-sm text-zinc-400">{vehicle.notes}</p>
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+
   return (
     <main className="min-h-screen bg-[#151515] px-4 py-6 text-white md:px-10">
       <div className="mx-auto max-w-7xl">
@@ -672,11 +763,9 @@ export default function VehicleDashboard({ vehicles }: Props) {
             {showDeletedPanel
               ? `${archivedVehicles.length} supprimé${archivedVehicles.length > 1 ? 's' : ''}`
               : viewMode === 'parking'
-              ? `${selectedParking ? selectedParkingVehicles.length : parkingGroups.length} ${
-                  selectedParking
-                    ? `véhicule${selectedParkingVehicles.length > 1 ? 's' : ''}`
-                    : `parking${parkingGroups.length > 1 ? 's' : ''}`
-                }`
+              ? selectedParking
+                ? `${selectedParkingVehicles.length} véhicule${selectedParkingVehicles.length > 1 ? 's' : ''}`
+                : `${parkingGroups.length} parking${parkingGroups.length > 1 ? 's' : ''}`
               : `${filteredVehicles.length} véhicule${filteredVehicles.length > 1 ? 's' : ''}`}
           </div>
         </div>
@@ -690,9 +779,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
                   type="button"
                   onClick={() => toggleFilter(card.key)}
                   className={`rounded-3xl border bg-[#1E1E1E] p-6 text-left transition ${
-                    activeFilters.includes(card.key)
-                      ? card.borderColor
-                      : 'border-transparent'
+                    activeFilters.includes(card.key) ? card.borderColor : 'border-transparent'
                   }`}
                 >
                   <p className="text-lg text-zinc-300">{card.label}</p>
@@ -828,103 +915,28 @@ export default function VehicleDashboard({ vehicles }: Props) {
           </div>
         ) : viewMode === 'parking' ? (
           selectedParking ? (
-            <div className="rounded-[28px] border border-white/10 bg-[#1E1E1E] p-6">
-              <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold">{selectedParking}</h2>
-                  <p className="mt-1 text-zinc-400">
-                    {selectedParkingVehicles.length} véhicule
-                    {selectedParkingVehicles.length > 1 ? 's' : ''} dans ce parking
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setSelectedParking(null)}
-                  className={ghostBtnCls}
-                >
-                  Retour aux parkings
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                {selectedParkingVehicles.map((vehicle) => (
-                  <div
-                    key={vehicle.id}
-                    className="rounded-2xl border border-white/10 bg-[#151515] px-5 py-5"
-                  >
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="space-y-3">
-                        <Link
-                          href={`/vehicles/${vehicle.id}`}
-                          className="inline-flex w-fit rounded-2xl bg-[#1B1B1B] px-4 py-2 text-xl font-semibold tracking-wide transition hover:bg-[#2a2a2a]"
-                        >
-                          {vehicle.license_plate}
-                        </Link>
-
-                        <div>
-                          <p className="text-zinc-400">Véhicule</p>
-                          <p className="text-2xl font-semibold text-white">
-                            {vehicle.brand} {vehicle.model}
-                          </p>
-                        </div>
-
-                        <div className="flex flex-wrap gap-6 text-zinc-300">
-                          <div>
-                            <p className="text-sm text-zinc-500">Km</p>
-                            <p className="text-lg">{formatKm(vehicle.mileage)} km</p>
-                          </div>
-                          <div>
-                            <p className="text-sm text-zinc-500">Entretien</p>
-                            <p className="text-lg">
-                              {formatKm(vehicle.next_service_km)} km
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-sm text-zinc-500">Carrosserie</p>
-                            <p
-                              className={`text-lg font-semibold ${getBodyworkColor(
-                                vehicle.bodywork_status
-                              )}`}
-                            >
-                              {getBodyworkLabel(vehicle.bodywork_status)}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-3">
-                        <div
-                          className={`inline-flex w-fit rounded-full px-5 py-2 text-base font-semibold ${getStatusBadge(
-                            vehicle.status
-                          )}`}
-                        >
-                          {getStatusLabel(vehicle.status)}
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => openManage(vehicle)}
-                          className="rounded-2xl border border-white/15 px-4 py-2 text-sm font-medium text-white hover:bg-white/5"
-                        >
-                          Gérer
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="mt-5 h-3 w-full rounded-full bg-[#101010]">
-                      <div
-                        className={`h-3 rounded-full ${getProgressColor(vehicle)}`}
-                        style={{ width: `${getProgressPercent(vehicle)}%` }}
-                      />
-                    </div>
-
-                    {vehicle.notes ? (
-                      <p className="mt-4 text-sm text-zinc-400">{vehicle.notes}</p>
-                    ) : null}
+            <div className="space-y-5">
+              <div className="rounded-[28px] border border-white/10 bg-[#1E1E1E] p-6">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <h2 className="text-2xl font-bold">{selectedParking}</h2>
+                    <p className="mt-1 text-zinc-400">
+                      {selectedParkingVehicles.length} véhicule
+                      {selectedParkingVehicles.length > 1 ? 's' : ''} dans ce parking
+                    </p>
                   </div>
-                ))}
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedParking(null)}
+                    className={ghostBtnCls}
+                  >
+                    Retour aux parkings
+                  </button>
+                </div>
               </div>
+
+              {viewMode === 'parking' && renderVehicleList(selectedParkingVehicles)}
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -941,9 +953,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
                     className="rounded-[28px] border border-white/10 bg-[#1E1E1E] p-6 text-left transition hover:bg-[#242424]"
                   >
                     <div className="mb-4 flex items-center justify-between gap-3">
-                      <h2 className="text-2xl font-bold text-white">
-                        {group.parking}
-                      </h2>
+                      <h2 className="text-2xl font-bold text-white">{group.parking}</h2>
                       <span className="rounded-full border border-white/10 bg-[#151515] px-3 py-1 text-sm text-zinc-300">
                         {group.vehicles.length}
                       </span>
@@ -990,98 +1000,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
         ) : viewMode === 'cards' ? (
           <div className="space-y-5">{filteredVehicles.map(renderVehicleCard)}</div>
         ) : (
-          <div className="overflow-hidden rounded-[28px] border border-white/10 bg-[#1E1E1E]">
-            <div className="hidden grid-cols-8 gap-4 border-b border-white/10 bg-[#181818] px-6 py-4 text-sm font-medium text-zinc-400 md:grid">
-              <div>Immatriculation</div>
-              <div>Véhicule</div>
-              <div>Km</div>
-              <div>Entretien</div>
-              <div>Parking</div>
-              <div>Statut</div>
-              <div>Carrosserie</div>
-              <div>Action</div>
-            </div>
-
-            <div className="divide-y divide-white/10">
-              {filteredVehicles.map((vehicle) => (
-                <div
-                  key={vehicle.id}
-                  className="grid grid-cols-1 gap-4 px-6 py-5 transition hover:bg-white/[0.03] md:grid-cols-8 md:items-center"
-                >
-                  <Link href={`/vehicles/${vehicle.id}`} className="block">
-                    <p className="text-xs text-zinc-500 md:hidden">Immatriculation</p>
-                    <p className="font-semibold text-white">
-                      {vehicle.license_plate}
-                    </p>
-                  </Link>
-
-                  <Link href={`/vehicles/${vehicle.id}`} className="block">
-                    <p className="text-xs text-zinc-500 md:hidden">Véhicule</p>
-                    <p className="text-white">
-                      {vehicle.brand} {vehicle.model}
-                    </p>
-                  </Link>
-
-                  <Link href={`/vehicles/${vehicle.id}`} className="block">
-                    <p className="text-xs text-zinc-500 md:hidden">Km</p>
-                    <p className="text-zinc-200">{formatKm(vehicle.mileage)} km</p>
-                  </Link>
-
-                  <Link href={`/vehicles/${vehicle.id}`} className="block">
-                    <p className="text-xs text-zinc-500 md:hidden">Entretien</p>
-                    <p className="text-zinc-200">
-                      {formatKm(vehicle.next_service_km)} km
-                    </p>
-                  </Link>
-
-                  <Link href={`/vehicles/${vehicle.id}`} className="block">
-                    <p className="text-xs text-zinc-500 md:hidden">Parking</p>
-                    <p className="text-zinc-200">
-                      {vehicle.parking_location || '—'}
-                    </p>
-                  </Link>
-
-                  <Link href={`/vehicles/${vehicle.id}`} className="block">
-                    <p className="text-xs text-zinc-500 md:hidden">Statut</p>
-                    <span
-                      className={`inline-flex w-fit rounded-full px-3 py-1 text-sm font-medium ${getStatusBadge(
-                        vehicle.status
-                      )}`}
-                    >
-                      {getStatusLabel(vehicle.status)}
-                    </span>
-                  </Link>
-
-                  <Link href={`/vehicles/${vehicle.id}`} className="block">
-                    <p className="text-xs text-zinc-500 md:hidden">Carrosserie</p>
-                    <p
-                      className={`font-medium ${getBodyworkColor(
-                        vehicle.bodywork_status
-                      )}`}
-                    >
-                      {getBodyworkLabel(vehicle.bodywork_status)}
-                    </p>
-                  </Link>
-
-                  <div>
-                    <button
-                      type="button"
-                      onClick={() => openManage(vehicle)}
-                      className="rounded-xl border border-white/15 px-4 py-2 text-sm font-medium text-white hover:bg-white/5"
-                    >
-                      Gérer
-                    </button>
-                  </div>
-
-                  {vehicle.notes ? (
-                    <div className="md:col-span-8">
-                      <p className="text-sm text-zinc-400">{vehicle.notes}</p>
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          </div>
+          renderVehicleList(filteredVehicles)
         )}
       </div>
 
@@ -1098,9 +1017,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
                 onClick={goActive}
                 className="flex-1 rounded-2xl border border-white/10 bg-[#1E1E1E] px-4 py-4 text-left hover:bg-white/5"
               >
-                <div className="text-sm font-medium text-zinc-400">
-                  Menu principal
-                </div>
+                <div className="text-sm font-medium text-zinc-400">Menu principal</div>
                 <div className="mt-1 text-2xl font-bold text-white">Menu</div>
               </button>
 
