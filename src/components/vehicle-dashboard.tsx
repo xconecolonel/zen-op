@@ -36,9 +36,10 @@ type VehicleForm = {
 }
 
 type ViewMode = 'cards' | 'list' | 'parking'
+type FilterKey = 'dispo' | 'contrat' | 'carro' | 'entretien'
 
 type StatCard = {
-  key: string
+  key: FilterKey
   label: string
   total: number
   textColor: string
@@ -46,7 +47,7 @@ type StatCard = {
 }
 
 type FilterTab = {
-  key: string
+  key: FilterKey
   label: string
 }
 
@@ -72,6 +73,30 @@ const ghostBtnCls =
 function formatKm(value: number | null) {
   if (value === null || value === undefined) return '—'
   return new Intl.NumberFormat('fr-FR').format(value)
+}
+
+function isAvailable(vehicle: Vehicle) {
+  return (vehicle.status || '').toLowerCase().includes('disponible')
+}
+
+function isContract(vehicle: Vehicle) {
+  return (vehicle.status || '').toLowerCase().includes('contrat')
+}
+
+function isBodywork(vehicle: Vehicle) {
+  return (vehicle.status || '').toLowerCase().includes('carrosserie')
+}
+
+function isMaintenance(vehicle: Vehicle) {
+  const mileage = vehicle.mileage || 0
+  const nextService = vehicle.next_service_km || 0
+  return !!nextService && mileage >= nextService - 3000
+}
+
+function getStatusLabel(status: string | null) {
+  const s = (status || '').toLowerCase()
+  if (s.includes('contrat')) return 'JR'
+  return status || '—'
 }
 
 function getStatusBadge(status: string | null) {
@@ -124,36 +149,19 @@ function daysLeftFromArchive(archivedAt: string | null | undefined) {
 }
 
 function countAvailable(vehicles: Vehicle[]) {
-  return vehicles.filter(
-    (v) =>
-      !(v.is_archived ?? false) &&
-      (v.status || '').toLowerCase().includes('disponible')
-  ).length
+  return vehicles.filter((v) => !(v.is_archived ?? false) && isAvailable(v)).length
 }
 
 function countContract(vehicles: Vehicle[]) {
-  return vehicles.filter(
-    (v) =>
-      !(v.is_archived ?? false) &&
-      (v.status || '').toLowerCase().includes('contrat')
-  ).length
+  return vehicles.filter((v) => !(v.is_archived ?? false) && isContract(v)).length
 }
 
 function countBodywork(vehicles: Vehicle[]) {
-  return vehicles.filter(
-    (v) =>
-      !(v.is_archived ?? false) &&
-      (v.status || '').toLowerCase().includes('carrosserie')
-  ).length
+  return vehicles.filter((v) => !(v.is_archived ?? false) && isBodywork(v)).length
 }
 
 function countMaintenance(vehicles: Vehicle[]) {
-  return vehicles.filter((v) => {
-    if (v.is_archived ?? false) return false
-    const mileage = v.mileage || 0
-    const nextService = v.next_service_km || 0
-    return !!nextService && mileage >= nextService - 3000
-  }).length
+  return vehicles.filter((v) => !(v.is_archived ?? false) && isMaintenance(v)).length
 }
 
 function toForm(vehicle: Vehicle): VehicleForm {
@@ -175,7 +183,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
 
   const [vehicleList, setVehicleList] = useState<Vehicle[]>(vehicles)
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState('all')
+  const [activeFilters, setActiveFilters] = useState<FilterKey[]>([])
   const [viewMode, setViewMode] = useState<ViewMode>('cards')
 
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -229,34 +237,24 @@ export default function VehicleDashboard({ vehicles }: Props) {
 
       const matchesSearch = !q || searchable.includes(q)
 
-      let matchesFilter = true
-      if (filter === 'dispo') {
-        matchesFilter = (vehicle.status || '')
-          .toLowerCase()
-          .includes('disponible')
-      }
-      if (filter === 'contrat') {
-        matchesFilter = (vehicle.status || '').toLowerCase().includes('contrat')
-      }
-      if (filter === 'carro') {
-        matchesFilter = (vehicle.status || '')
-          .toLowerCase()
-          .includes('carrosserie')
-      }
-      if (filter === 'entretien') {
-        matchesFilter =
-          (vehicle.next_service_km || 0) > 0 &&
-          (vehicle.mileage || 0) >= (vehicle.next_service_km || 0) - 3000
-      }
+      const matchesFilters =
+        activeFilters.length === 0 ||
+        activeFilters.every((filterKey) => {
+          if (filterKey === 'dispo') return isAvailable(vehicle)
+          if (filterKey === 'contrat') return isContract(vehicle)
+          if (filterKey === 'carro') return isBodywork(vehicle)
+          if (filterKey === 'entretien') return isMaintenance(vehicle)
+          return true
+        })
 
-      return matchesSearch && matchesFilter
+      return matchesSearch && matchesFilters
     })
-  }, [activeVehicles, search, filter])
+  }, [activeVehicles, search, activeFilters])
 
   const parkingGroups = useMemo(() => {
     const groups = new Map<string, Vehicle[]>()
 
-    for (const vehicle of activeVehicles) {
+    for (const vehicle of filteredVehicles) {
       const parking = (vehicle.parking_location || '').trim() || 'Sans parking'
       if (!groups.has(parking)) groups.set(parking, [])
       groups.get(parking)!.push(vehicle)
@@ -270,14 +268,11 @@ export default function VehicleDashboard({ vehicles }: Props) {
         ),
       }))
       .sort((a, b) => a.parking.localeCompare(b.parking))
-  }, [activeVehicles])
+  }, [filteredVehicles])
 
   const selectedParkingVehicles = useMemo(() => {
     if (!selectedParking) return []
-    return (
-      parkingGroups.find((group) => group.parking === selectedParking)?.vehicles ||
-      []
-    )
+    return parkingGroups.find((group) => group.parking === selectedParking)?.vehicles || []
   }, [parkingGroups, selectedParking])
 
   const statCards: StatCard[] = [
@@ -290,7 +285,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
     },
     {
       key: 'contrat',
-      label: 'En contrat LLD',
+      label: 'JR',
       total: countContract(vehicleList),
       textColor: 'text-[#6FAAF2]',
       borderColor: 'border-[#6FAAF2]/60',
@@ -312,12 +307,23 @@ export default function VehicleDashboard({ vehicles }: Props) {
   ]
 
   const filterTabs: FilterTab[] = [
-    { key: 'all', label: 'Tous' },
     { key: 'dispo', label: 'Disponibles' },
-    { key: 'contrat', label: 'En contrat' },
+    { key: 'contrat', label: 'JR' },
     { key: 'carro', label: 'Carrosserie' },
     { key: 'entretien', label: 'Entretien' },
   ]
+
+  function toggleFilter(key: FilterKey) {
+    setSelectedParking(null)
+    setActiveFilters((prev) =>
+      prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key]
+    )
+  }
+
+  function clearFilters() {
+    setSelectedParking(null)
+    setActiveFilters([])
+  }
 
   const updateAddForm = (key: keyof VehicleForm, value: string) =>
     setAddForm((prev) => ({ ...prev, [key]: value }))
@@ -343,8 +349,8 @@ export default function VehicleDashboard({ vehicles }: Props) {
   const goActive = () => {
     setSidebarOpen(false)
     setShowDeletedPanel(false)
-    setFilter('all')
     setSelectedParking(null)
+    setActiveFilters([])
     setViewMode('cards')
   }
 
@@ -363,9 +369,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
       brand: addForm.brand.trim() || null,
       model: addForm.model.trim() || null,
       mileage: addForm.mileage ? Number(addForm.mileage) : null,
-      next_service_km: addForm.next_service_km
-        ? Number(addForm.next_service_km)
-        : null,
+      next_service_km: addForm.next_service_km ? Number(addForm.next_service_km) : null,
       parking_location: addForm.parking_location.trim() || null,
       status: addForm.status.trim() || null,
       bodywork_status: addForm.bodywork_status.trim() || null,
@@ -409,9 +413,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
       brand: editForm.brand.trim() || null,
       model: editForm.model.trim() || null,
       mileage: editForm.mileage ? Number(editForm.mileage) : null,
-      next_service_km: editForm.next_service_km
-        ? Number(editForm.next_service_km)
-        : null,
+      next_service_km: editForm.next_service_km ? Number(editForm.next_service_km) : null,
       parking_location: editForm.parking_location.trim() || null,
       status: editForm.status.trim() || null,
       bodywork_status: editForm.bodywork_status.trim() || null,
@@ -513,12 +515,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
     setVehicleList((prev) =>
       prev.map((v) =>
         v.id === vehicle.id
-          ? {
-              ...v,
-              is_archived: false,
-              archived_at: null,
-              archive_reason: null,
-            }
+          ? { ...v, is_archived: false, archived_at: null, archive_reason: null }
           : v
       )
     )
@@ -528,15 +525,13 @@ export default function VehicleDashboard({ vehicles }: Props) {
     router.refresh()
   }
 
-  const renderViewSwitch = (parkingMode = false) => (
+  const renderViewSwitch = () => (
     <div className="inline-flex w-fit rounded-2xl border border-white/15 bg-[#1E1E1E] p-1">
       <button
         type="button"
         onClick={() => setViewMode('cards')}
         className={`rounded-xl px-5 py-2 text-sm md:text-base ${
-          !parkingMode && viewMode === 'cards'
-            ? 'bg-white text-black'
-            : 'text-zinc-300'
+          viewMode === 'cards' ? 'bg-white text-black' : 'text-zinc-300'
         }`}
       >
         Vue cartes
@@ -545,9 +540,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
         type="button"
         onClick={() => setViewMode('list')}
         className={`rounded-xl px-5 py-2 text-sm md:text-base ${
-          !parkingMode && viewMode === 'list'
-            ? 'bg-white text-black'
-            : 'text-zinc-300'
+          viewMode === 'list' ? 'bg-white text-black' : 'text-zinc-300'
         }`}
       >
         Vue liste
@@ -559,9 +552,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
           setViewMode('parking')
         }}
         className={`rounded-xl px-5 py-2 text-sm md:text-base ${
-          parkingMode || viewMode === 'parking'
-            ? 'bg-white text-black'
-            : 'text-zinc-300'
+          viewMode === 'parking' ? 'bg-white text-black' : 'text-zinc-300'
         }`}
       >
         Vue parkings
@@ -588,7 +579,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
               vehicle.status
             )}`}
           >
-            {vehicle.status || '—'}
+            {getStatusLabel(vehicle.status)}
           </div>
 
           <button
@@ -679,29 +670,29 @@ export default function VehicleDashboard({ vehicles }: Props) {
 
           <div className="text-right text-lg text-zinc-300 md:text-2xl">
             {showDeletedPanel
-              ? `${archivedVehicles.length} supprimé${
-                  archivedVehicles.length > 1 ? 's' : ''
-                }`
+              ? `${archivedVehicles.length} supprimé${archivedVehicles.length > 1 ? 's' : ''}`
               : viewMode === 'parking'
-              ? `${parkingGroups.length} parking${
-                  parkingGroups.length > 1 ? 's' : ''
+              ? `${selectedParking ? selectedParkingVehicles.length : parkingGroups.length} ${
+                  selectedParking
+                    ? `véhicule${selectedParkingVehicles.length > 1 ? 's' : ''}`
+                    : `parking${parkingGroups.length > 1 ? 's' : ''}`
                 }`
-              : `${filteredVehicles.length} véhicule${
-                  filteredVehicles.length > 1 ? 's' : ''
-                }`}
+              : `${filteredVehicles.length} véhicule${filteredVehicles.length > 1 ? 's' : ''}`}
           </div>
         </div>
 
-        {!showDeletedPanel && viewMode !== 'parking' && (
+        {!showDeletedPanel && (
           <>
             <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {statCards.map((card) => (
                 <button
                   key={card.key}
                   type="button"
-                  onClick={() => setFilter(filter === card.key ? 'all' : card.key)}
+                  onClick={() => toggleFilter(card.key)}
                   className={`rounded-3xl border bg-[#1E1E1E] p-6 text-left transition ${
-                    filter === card.key ? card.borderColor : 'border-transparent'
+                    activeFilters.includes(card.key)
+                      ? card.borderColor
+                      : 'border-transparent'
                   }`}
                 >
                   <p className="text-lg text-zinc-300">{card.label}</p>
@@ -716,21 +707,40 @@ export default function VehicleDashboard({ vehicles }: Props) {
               <input
                 type="text"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Rechercher par immatriculation, marque, parking, statut ou note"
+                onChange={(e) => {
+                  setSelectedParking(null)
+                  setSearch(e.target.value)
+                }}
+                placeholder={
+                  viewMode === 'parking'
+                    ? 'Rechercher par parking, immatriculation, marque, statut ou note'
+                    : 'Rechercher par immatriculation, marque, parking, statut ou note'
+                }
                 className="w-full rounded-2xl border border-white/10 bg-[#1E1E1E] px-5 py-4 text-lg text-white outline-none placeholder:text-zinc-500"
               />
             </div>
 
             <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className={`rounded-2xl border px-6 py-3 text-lg ${
+                    activeFilters.length === 0
+                      ? 'border-white bg-white text-black'
+                      : 'border-white/20 text-white'
+                  }`}
+                >
+                  Tous
+                </button>
+
                 {filterTabs.map((tab) => (
                   <button
                     key={tab.key}
                     type="button"
-                    onClick={() => setFilter(tab.key)}
+                    onClick={() => toggleFilter(tab.key)}
                     className={`rounded-2xl border px-6 py-3 text-lg ${
-                      filter === tab.key
+                      activeFilters.includes(tab.key)
                         ? 'border-white bg-white text-black'
                         : 'border-white/20 text-white'
                     }`}
@@ -743,10 +753,6 @@ export default function VehicleDashboard({ vehicles }: Props) {
               {renderViewSwitch()}
             </div>
           </>
-        )}
-
-        {!showDeletedPanel && viewMode === 'parking' && (
-          <div className="mb-6 flex justify-end">{renderViewSwitch(true)}</div>
         )}
 
         {actionMessage ? (
@@ -769,7 +775,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
                 type="button"
                 onClick={() => {
                   setShowDeletedPanel(false)
-                  setFilter('all')
+                  clearFilters()
                 }}
                 className={ghostBtnCls}
               >
@@ -799,13 +805,10 @@ export default function VehicleDashboard({ vehicles }: Props) {
                         <div className="mt-2 text-sm text-zinc-500">
                           Archivé le{' '}
                           {vehicle.archived_at
-                            ? new Date(vehicle.archived_at).toLocaleDateString(
-                                'fr-FR'
-                              )
+                            ? new Date(vehicle.archived_at).toLocaleDateString('fr-FR')
                             : '—'}{' '}
                           • {daysLeftFromArchive(vehicle.archived_at)} jour
-                          {daysLeftFromArchive(vehicle.archived_at) > 1 ? 's' : ''}{' '}
-                          restants
+                          {daysLeftFromArchive(vehicle.archived_at) > 1 ? 's' : ''} restants
                         </div>
                       </div>
 
@@ -815,9 +818,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
                         disabled={restoringId === vehicle.id}
                         className={modalBtnCls}
                       >
-                        {restoringId === vehicle.id
-                          ? 'Restauration...'
-                          : 'Restaurer'}
+                        {restoringId === vehicle.id ? 'Restauration...' : 'Restaurer'}
                       </button>
                     </div>
                   </div>
@@ -898,7 +899,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
                             vehicle.status
                           )}`}
                         >
-                          {vehicle.status || '—'}
+                          {getStatusLabel(vehicle.status)}
                         </div>
 
                         <button
@@ -968,7 +969,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
                               vehicle.status
                             )}`}
                           >
-                            {vehicle.status || '—'}
+                            {getStatusLabel(vehicle.status)}
                           </div>
                         </div>
                       ))}
@@ -1008,9 +1009,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
                   className="grid grid-cols-1 gap-4 px-6 py-5 transition hover:bg-white/[0.03] md:grid-cols-8 md:items-center"
                 >
                   <Link href={`/vehicles/${vehicle.id}`} className="block">
-                    <p className="text-xs text-zinc-500 md:hidden">
-                      Immatriculation
-                    </p>
+                    <p className="text-xs text-zinc-500 md:hidden">Immatriculation</p>
                     <p className="font-semibold text-white">
                       {vehicle.license_plate}
                     </p>
@@ -1049,7 +1048,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
                         vehicle.status
                       )}`}
                     >
-                      {vehicle.status || '—'}
+                      {getStatusLabel(vehicle.status)}
                     </span>
                   </Link>
 
@@ -1192,18 +1191,14 @@ export default function VehicleDashboard({ vehicles }: Props) {
               />
               <input
                 value={addForm.next_service_km}
-                onChange={(e) =>
-                  updateAddForm('next_service_km', e.target.value)
-                }
+                onChange={(e) => updateAddForm('next_service_km', e.target.value)}
                 placeholder="Prochain entretien"
                 type="number"
                 className={inputCls}
               />
               <input
                 value={addForm.parking_location}
-                onChange={(e) =>
-                  updateAddForm('parking_location', e.target.value)
-                }
+                onChange={(e) => updateAddForm('parking_location', e.target.value)}
                 placeholder="Emplacement parking"
                 className={inputCls}
               />
@@ -1222,9 +1217,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
 
               <select
                 value={addForm.bodywork_status}
-                onChange={(e) =>
-                  updateAddForm('bodywork_status', e.target.value)
-                }
+                onChange={(e) => updateAddForm('bodywork_status', e.target.value)}
                 className={inputCls}
               >
                 <option value="ok">OK</option>
@@ -1259,9 +1252,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-3xl rounded-3xl border border-white/10 bg-[#1E1E1E] p-6">
             <div className="mb-6 flex items-center justify-between">
-              <h2 className="text-2xl font-bold">
-                Gérer {selectedVehicle.license_plate}
-              </h2>
+              <h2 className="text-2xl font-bold">Gérer {selectedVehicle.license_plate}</h2>
               <button
                 type="button"
                 onClick={() => setManageOpen(false)}
@@ -1274,9 +1265,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <input
                 value={editForm.license_plate}
-                onChange={(e) =>
-                  updateEditForm('license_plate', e.target.value)
-                }
+                onChange={(e) => updateEditForm('license_plate', e.target.value)}
                 placeholder="Immatriculation"
                 className={inputCls}
               />
@@ -1301,18 +1290,14 @@ export default function VehicleDashboard({ vehicles }: Props) {
               />
               <input
                 value={editForm.next_service_km}
-                onChange={(e) =>
-                  updateEditForm('next_service_km', e.target.value)
-                }
+                onChange={(e) => updateEditForm('next_service_km', e.target.value)}
                 placeholder="Prochain entretien"
                 type="number"
                 className={inputCls}
               />
               <input
                 value={editForm.parking_location}
-                onChange={(e) =>
-                  updateEditForm('parking_location', e.target.value)
-                }
+                onChange={(e) => updateEditForm('parking_location', e.target.value)}
                 placeholder="Emplacement parking"
                 className={inputCls}
               />
@@ -1331,9 +1316,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
 
               <select
                 value={editForm.bodywork_status}
-                onChange={(e) =>
-                  updateEditForm('bodywork_status', e.target.value)
-                }
+                onChange={(e) => updateEditForm('bodywork_status', e.target.value)}
                 className={inputCls}
               >
                 <option value="ok">OK</option>
@@ -1366,9 +1349,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
                 disabled={savingEdit}
                 className={modalBtnCls}
               >
-                {savingEdit
-                  ? 'Enregistrement...'
-                  : 'Enregistrer les modifications'}
+                {savingEdit ? 'Enregistrement...' : 'Enregistrer les modifications'}
               </button>
             </div>
           </div>
