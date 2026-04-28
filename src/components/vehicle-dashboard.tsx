@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
@@ -21,7 +21,19 @@ type Vehicle = {
   archive_reason?: string | null
 }
 
-type Props = { vehicles: Vehicle[] }
+type ParkingLink = {
+  id: number
+  name: string
+  entry_address: string | null
+  exit_address: string | null
+  parking_url: string | null
+  notes: string | null
+}
+
+type Props = {
+  vehicles: Vehicle[]
+  parkingLinks: ParkingLink[]
+}
 
 type VehicleForm = {
   license_plate: string
@@ -35,38 +47,19 @@ type VehicleForm = {
   notes: string
 }
 
-type ParkingLink = {
-  id: number | null
-  parking_name: string
-  entry_address: string | null
-  exit_address: string | null
-  parking_url: string | null
-}
-
 type ParkingForm = {
-  parking_name: string
+  name: string
   entry_address: string
   exit_address: string
   parking_url: string
+  notes: string
 }
 
 type ViewMode = 'cards' | 'list' | 'parking'
-type FilterKey = 'dispo' | 'contrat' | 'carro' | 'entretien'
+type PageMode = 'vehicles' | 'parkingLinks' | 'deleted' | 'assurances' | 'claims'
+type FilterKey = 'dispo' | 'jr' | 'carro' | 'entretien'
 
-type StatCard = {
-  key: FilterKey
-  label: string
-  total: number
-  textColor: string
-  borderColor: string
-}
-
-type FilterTab = {
-  key: FilterKey
-  label: string
-}
-
-const emptyForm: VehicleForm = {
+const emptyVehicleForm: VehicleForm = {
   license_plate: '',
   brand: '',
   model: '',
@@ -79,68 +72,54 @@ const emptyForm: VehicleForm = {
 }
 
 const emptyParkingForm: ParkingForm = {
-  parking_name: '',
+  name: '',
   entry_address: '',
   exit_address: '',
   parking_url: '',
+  notes: '',
 }
 
-const inputCls =
-  'rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none'
-const modalBtnCls =
-  'rounded-2xl bg-white px-5 py-3 font-semibold text-black disabled:opacity-50'
-const ghostBtnCls =
-  'rounded-2xl border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5'
+const filterConfig: { key: FilterKey; label: string }[] = [
+  { key: 'dispo', label: 'Disponibles' },
+  { key: 'jr', label: 'JR' },
+  { key: 'carro', label: 'Carrosserie' },
+  { key: 'entretien', label: 'Entretien' },
+]
 
-function formatKm(value: number | null) {
-  if (value === null || value === undefined) return '—'
-  return new Intl.NumberFormat('fr-FR').format(value)
-}
+const normalize = (value: string | null | undefined) =>
+  (value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .trim()
 
-function normalizeParkingName(value: string | null | undefined) {
-  return (value || '').trim().toLowerCase()
-}
+const parkingNameOf = (value: string | null | undefined) => (value || '').trim() || 'Sans parking'
 
-function cleanParkingName(value: string | null | undefined) {
-  return (value || '').trim()
-}
+const formatKm = (value: number | null) =>
+  value === null || value === undefined ? '—' : new Intl.NumberFormat('fr-FR').format(value)
 
-function isAvailable(vehicle: Vehicle) {
-  return (vehicle.status || '').toLowerCase().includes('disponible')
-}
-
-function isContract(vehicle: Vehicle) {
-  return (vehicle.status || '').toLowerCase().includes('contrat')
-}
-
-function isBodywork(vehicle: Vehicle) {
-  return (vehicle.status || '').toLowerCase().includes('carrosserie')
-}
-
-function isMaintenance(vehicle: Vehicle) {
-  const mileage = vehicle.mileage || 0
-  const nextService = vehicle.next_service_km || 0
-  return !!nextService && mileage >= nextService - 3000
-}
-
-function getStatusLabel(status: string | null) {
-  const s = (status || '').toLowerCase()
-  if (s.includes('contrat')) return 'JR'
+const getStatusText = (status: string | null) => {
+  const s = normalize(status)
+  if (s.includes('contrat') || s === 'jr') return 'JR'
+  if (s.includes('disponible')) return 'Disponible'
+  if (s.includes('carrosserie')) return 'Carrosserie'
+  if (s.includes('entretien')) return 'Entretien'
+  if (s.includes('indispo')) return 'Indisponible'
   return status || '—'
 }
 
-function getStatusBadge(status: string | null) {
-  const s = (status || '').toLowerCase()
+const getStatusBadge = (status: string | null) => {
+  const s = normalize(status)
   if (s.includes('disponible')) return 'bg-[#E8F1D9] text-[#3D5A1D]'
-  if (s.includes('contrat')) return 'bg-[#DCE9F9] text-[#245B9B]'
+  if (s.includes('contrat') || s === 'jr') return 'bg-[#DCE9F9] text-[#245B9B]'
   if (s.includes('carrosserie')) return 'bg-[#F2E6D3] text-[#8B5A1A]'
   if (s.includes('entretien')) return 'bg-[#3a0f0f] text-[#ff6b6b]'
   if (s.includes('indispo')) return 'bg-zinc-700 text-zinc-200'
   return 'bg-zinc-700 text-zinc-100'
 }
 
-function getBodyworkLabel(value: string | null) {
-  const v = (value || '').toLowerCase()
+const getBodyworkLabel = (value: string | null) => {
+  const v = normalize(value)
   if (v === 'ok') return 'OK'
   if (v === 'a_verifier') return 'À vérifier'
   if (v === 'en_cours') return 'En réparation'
@@ -148,16 +127,16 @@ function getBodyworkLabel(value: string | null) {
   return value || '—'
 }
 
-function getBodyworkColor(value: string | null) {
-  const v = (value || '').toLowerCase()
+const getBodyworkColor = (value: string | null) => {
+  const v = normalize(value)
   if (v === 'ok') return 'text-emerald-400'
   if (v === 'a_verifier') return 'text-amber-400'
   if (v === 'en_cours' || v === 'urgent') return 'text-red-400'
   return 'text-zinc-300'
 }
 
-function getProgressColor(vehicle: Vehicle) {
-  const status = (vehicle.status || '').toLowerCase()
+const getProgressColor = (vehicle: Vehicle) => {
+  const status = normalize(vehicle.status)
   const mileage = vehicle.mileage || 0
   const nextService = vehicle.next_service_km || 0
   if (status.includes('carrosserie')) return 'bg-[#19C08A]'
@@ -165,107 +144,81 @@ function getProgressColor(vehicle: Vehicle) {
   return 'bg-[#F2AE2E]'
 }
 
-function getProgressPercent(vehicle: Vehicle) {
+const getProgressPercent = (vehicle: Vehicle) => {
   const mileage = vehicle.mileage || 0
   const nextService = vehicle.next_service_km || 0
   if (!nextService || nextService <= 0) return 35
   return Math.max(Math.min((mileage / nextService) * 100, 100), 10)
 }
 
-function daysLeftFromArchive(archivedAt: string | null | undefined) {
+const daysLeftFromArchive = (archivedAt: string | null | undefined) => {
   if (!archivedAt) return 30
   const diff = Date.now() - new Date(archivedAt).getTime()
-  return Math.max(0, 30 - Math.floor(diff / 86400000))
+  return Math.max(0, 30 - Math.floor(diff / (1000 * 60 * 60 * 24)))
 }
 
-function countAvailable(vehicles: Vehicle[]) {
-  return vehicles.filter((v) => !(v.is_archived ?? false) && isAvailable(v)).length
+const matchesFilter = (vehicle: Vehicle, filter: FilterKey) => {
+  const status = normalize(vehicle.status)
+  const mileage = vehicle.mileage || 0
+  const nextService = vehicle.next_service_km || 0
+
+  if (filter === 'dispo') return status.includes('disponible')
+  if (filter === 'jr') return status.includes('contrat') || status === 'jr'
+  if (filter === 'carro') return status.includes('carrosserie')
+  return nextService > 0 && mileage >= nextService - 3000
 }
 
-function countContract(vehicles: Vehicle[]) {
-  return vehicles.filter((v) => !(v.is_archived ?? false) && isContract(v)).length
-}
+const toVehicleForm = (vehicle: Vehicle): VehicleForm => ({
+  license_plate: vehicle.license_plate || '',
+  brand: vehicle.brand || '',
+  model: vehicle.model || '',
+  mileage: vehicle.mileage?.toString() || '',
+  next_service_km: vehicle.next_service_km?.toString() || '',
+  parking_location: vehicle.parking_location || '',
+  status: vehicle.status || 'Disponible',
+  bodywork_status: vehicle.bodywork_status || 'ok',
+  notes: vehicle.notes || '',
+})
 
-function countBodywork(vehicles: Vehicle[]) {
-  return vehicles.filter((v) => !(v.is_archived ?? false) && isBodywork(v)).length
-}
+const toParkingForm = (parking: ParkingLink): ParkingForm => ({
+  name: parking.name || '',
+  entry_address: parking.entry_address || '',
+  exit_address: parking.exit_address || '',
+  parking_url: parking.parking_url || '',
+  notes: parking.notes || '',
+})
 
-function countMaintenance(vehicles: Vehicle[]) {
-  return vehicles.filter((v) => !(v.is_archived ?? false) && isMaintenance(v)).length
-}
-
-function toForm(vehicle: Vehicle): VehicleForm {
-  return {
-    license_plate: vehicle.license_plate || '',
-    brand: vehicle.brand || '',
-    model: vehicle.model || '',
-    mileage: vehicle.mileage?.toString() || '',
-    next_service_km: vehicle.next_service_km?.toString() || '',
-    parking_location: vehicle.parking_location || '',
-    status: vehicle.status || 'Disponible',
-    bodywork_status: vehicle.bodywork_status || 'ok',
-    notes: vehicle.notes || '',
-  }
-}
-
-function toParkingForm(parking: ParkingLink): ParkingForm {
-  return {
-    parking_name: parking.parking_name || '',
-    entry_address: parking.entry_address || '',
-    exit_address: parking.exit_address || '',
-    parking_url: parking.parking_url || '',
-  }
-}
-
-export default function VehicleDashboard({ vehicles }: Props) {
+export default function VehicleDashboard({ vehicles, parkingLinks }: Props) {
   const router = useRouter()
 
   const [vehicleList, setVehicleList] = useState<Vehicle[]>(vehicles)
-  const [parkingLinks, setParkingLinks] = useState<ParkingLink[]>([])
+  const [parkingList, setParkingList] = useState<ParkingLink[]>(parkingLinks)
+
+  const [pageMode, setPageMode] = useState<PageMode>('vehicles')
+  const [viewMode, setViewMode] = useState<ViewMode>('cards')
 
   const [search, setSearch] = useState('')
   const [activeFilters, setActiveFilters] = useState<FilterKey[]>([])
-  const [viewMode, setViewMode] = useState<ViewMode>('cards')
+  const [selectedParking, setSelectedParking] = useState<string | null>(null)
 
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [showDeletedPanel, setShowDeletedPanel] = useState(false)
-  const [showParkingLinksPanel, setShowParkingLinksPanel] = useState(false)
-
-  const [addOpen, setAddOpen] = useState(false)
-  const [manageOpen, setManageOpen] = useState(false)
-  const [parkingOpen, setParkingOpen] = useState(false)
+  const [addVehicleOpen, setAddVehicleOpen] = useState(false)
+  const [manageVehicleOpen, setManageVehicleOpen] = useState(false)
+  const [addParkingOpen, setAddParkingOpen] = useState(false)
+  const [manageParkingOpen, setManageParkingOpen] = useState(false)
 
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null)
-  const [selectedParking, setSelectedParking] = useState<string | null>(null)
   const [selectedParkingLink, setSelectedParkingLink] = useState<ParkingLink | null>(null)
 
-  const [addForm, setAddForm] = useState<VehicleForm>(emptyForm)
-  const [editForm, setEditForm] = useState<VehicleForm>(emptyForm)
+  const [vehicleForm, setVehicleForm] = useState<VehicleForm>(emptyVehicleForm)
+  const [editVehicleForm, setEditVehicleForm] = useState<VehicleForm>(emptyVehicleForm)
   const [parkingForm, setParkingForm] = useState<ParkingForm>(emptyParkingForm)
 
-  const [savingAdd, setSavingAdd] = useState(false)
-  const [savingEdit, setSavingEdit] = useState(false)
+  const [savingVehicle, setSavingVehicle] = useState(false)
+  const [savingEditVehicle, setSavingEditVehicle] = useState(false)
   const [savingParking, setSavingParking] = useState(false)
   const [restoringId, setRestoringId] = useState<number | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
-
-  useEffect(() => {
-    async function loadParkingLinks() {
-      const { data, error } = await supabase
-        .from('parking_links')
-        .select('*')
-        .order('parking_name', { ascending: true })
-
-      if (error) {
-        setActionMessage(`Erreur parking_links : ${error.message}`)
-        return
-      }
-
-      setParkingLinks((data || []) as ParkingLink[])
-    }
-
-    loadParkingLinks()
-  }, [])
 
   const activeVehicles = useMemo(
     () => vehicleList.filter((v) => !(v.is_archived ?? false)),
@@ -276,274 +229,242 @@ export default function VehicleDashboard({ vehicles }: Props) {
     () =>
       vehicleList
         .filter((v) => v.is_archived ?? false)
-        .sort(
-          (a, b) =>
-            (b.archived_at ? new Date(b.archived_at).getTime() : 0) -
-            (a.archived_at ? new Date(a.archived_at).getTime() : 0)
-        ),
+        .sort((a, b) => {
+          const aTime = a.archived_at ? new Date(a.archived_at).getTime() : 0
+          const bTime = b.archived_at ? new Date(b.archived_at).getTime() : 0
+          return bTime - aTime
+        }),
     [vehicleList]
   )
 
-  const filteredVehicles = useMemo(() => {
-    const q = search.trim().toLowerCase()
-
-    return activeVehicles.filter((vehicle) => {
-      const searchable = [
-        vehicle.license_plate,
-        vehicle.parking_location,
-        vehicle.brand,
-        vehicle.model,
-        vehicle.status,
-        vehicle.bodywork_status,
-        vehicle.notes,
-      ]
-        .join(' ')
-        .toLowerCase()
-
-      const matchesSearch = !q || searchable.includes(q)
-
-      const matchesFilters =
-        activeFilters.length === 0 ||
-        activeFilters.every((filterKey) => {
-          if (filterKey === 'dispo') return isAvailable(vehicle)
-          if (filterKey === 'contrat') return isContract(vehicle)
-          if (filterKey === 'carro') return isBodywork(vehicle)
-          if (filterKey === 'entretien') return isMaintenance(vehicle)
-          return true
-        })
-
-      return matchesSearch && matchesFilters
+  const parkingCounts = useMemo(() => {
+    const map = new Map<string, number>()
+    activeVehicles.forEach((v) => {
+      const name = parkingNameOf(v.parking_location)
+      map.set(name, (map.get(name) || 0) + 1)
     })
-  }, [activeVehicles, search, activeFilters])
+    return map
+  }, [activeVehicles])
 
-  const parkingGroups = useMemo(() => {
-    const groups = new Map<string, Vehicle[]>()
+  const parkingNames = useMemo(
+    () => Array.from(parkingCounts.keys()).sort((a, b) => a.localeCompare(b)),
+    [parkingCounts]
+  )
 
-    for (const vehicle of filteredVehicles) {
-      const parking = cleanParkingName(vehicle.parking_location) || 'Sans parking'
-      if (!groups.has(parking)) groups.set(parking, [])
-      groups.get(parking)!.push(vehicle)
-    }
-
-    return Array.from(groups.entries())
-      .map(([parking, items]) => ({
-        parking,
-        vehicles: items.sort((a, b) =>
-          (a.license_plate || '').localeCompare(b.license_plate || '')
-        ),
-      }))
-      .sort((a, b) => a.parking.localeCompare(b.parking))
-  }, [filteredVehicles])
-
-  const selectedParkingVehicles = useMemo(() => {
-    if (!selectedParking) return []
-    return parkingGroups.find((group) => group.parking === selectedParking)?.vehicles || []
-  }, [parkingGroups, selectedParking])
-
-  const parkingLinkCards = useMemo(() => {
+  const mergedParkingLinks = useMemo(() => {
     const map = new Map<string, ParkingLink>()
 
-    for (const vehicle of activeVehicles) {
-      const name = cleanParkingName(vehicle.parking_location)
-      if (!name) continue
-      const key = normalizeParkingName(name)
-      if (!map.has(key)) {
-        map.set(key, {
-          id: null,
-          parking_name: name,
+    parkingList.forEach((p) => map.set(normalize(p.name), p))
+
+    parkingNames.forEach((name, index) => {
+      if (!map.has(normalize(name))) {
+        map.set(normalize(name), {
+          id: -(index + 1),
+          name,
           entry_address: null,
           exit_address: null,
           parking_url: null,
+          notes: null,
         })
       }
-    }
+    })
 
-    for (const row of parkingLinks) {
-      const name = cleanParkingName(row.parking_name)
-      if (!name) continue
-      map.set(normalizeParkingName(name), {
-        id: row.id,
-        parking_name: name,
-        entry_address: row.entry_address || null,
-        exit_address: row.exit_address || null,
-        parking_url: row.parking_url || null,
-      })
-    }
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name))
+  }, [parkingList, parkingNames])
 
-    const q = search.trim().toLowerCase()
+  const filteredVehicles = useMemo(() => {
+    const q = normalize(search)
 
-    return Array.from(map.values())
-      .filter((item) => {
-        const searchable = [
-          item.parking_name,
-          item.entry_address || '',
-          item.exit_address || '',
-          item.parking_url || '',
-        ]
-          .join(' ')
-          .toLowerCase()
+    return activeVehicles.filter((vehicle) => {
+      const searchable = normalize(
+        [
+          vehicle.license_plate,
+          vehicle.brand,
+          vehicle.model,
+          vehicle.parking_location,
+          vehicle.status,
+          vehicle.bodywork_status,
+          vehicle.notes,
+        ].join(' ')
+      )
 
-        return !q || searchable.includes(q)
-      })
-      .sort((a, b) => a.parking_name.localeCompare(b.parking_name))
-  }, [activeVehicles, parkingLinks, search])
+      const searchOk = !q || searchable.includes(q)
+      const filtersOk = activeFilters.every((filter) => matchesFilter(vehicle, filter))
+      const parkingOk =
+        viewMode !== 'parking' || !selectedParking
+          ? true
+          : normalize(parkingNameOf(vehicle.parking_location)) === normalize(selectedParking)
 
-  const statCards: StatCard[] = [
-    {
-      key: 'dispo',
-      label: 'Disponibles',
-      total: countAvailable(vehicleList),
-      textColor: 'text-emerald-400',
-      borderColor: 'border-emerald-500/60',
-    },
-    {
-      key: 'contrat',
-      label: 'JR',
-      total: countContract(vehicleList),
-      textColor: 'text-[#6FAAF2]',
-      borderColor: 'border-[#6FAAF2]/60',
-    },
-    {
-      key: 'carro',
-      label: 'Carrosserie',
-      total: countBodywork(vehicleList),
-      textColor: 'text-[#F2AE2E]',
-      borderColor: 'border-[#F2AE2E]/60',
-    },
-    {
-      key: 'entretien',
-      label: 'Entretien dû',
-      total: countMaintenance(vehicleList),
-      textColor: 'text-[#F55252]',
-      borderColor: 'border-[#F55252]/60',
-    },
-  ]
+      return searchOk && filtersOk && parkingOk
+    })
+  }, [activeVehicles, search, activeFilters, viewMode, selectedParking])
 
-  const filterTabs: FilterTab[] = [
-    { key: 'dispo', label: 'Disponibles' },
-    { key: 'contrat', label: 'JR' },
-    { key: 'carro', label: 'Carrosserie' },
-    { key: 'entretien', label: 'Entretien' },
-  ]
+  const visibleParkingNames = useMemo(() => {
+    const q = normalize(search)
+    return parkingNames.filter((name) => !q || normalize(name).includes(q))
+  }, [parkingNames, search])
 
-  function toggleFilter(key: FilterKey) {
-    setSelectedParking(null)
-    setActiveFilters((prev) =>
-      prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key]
-    )
-  }
+  const visibleParkingLinks = useMemo(() => {
+    const q = normalize(search)
+    return mergedParkingLinks.filter((parking) => {
+      const searchable = normalize(
+        [parking.name, parking.entry_address, parking.exit_address, parking.parking_url, parking.notes].join(
+          ' '
+        )
+      )
+      return !q || searchable.includes(q)
+    })
+  }, [mergedParkingLinks, search])
 
-  function clearFilters() {
-    setSelectedParking(null)
-    setActiveFilters([])
-  }
+  const stats = useMemo(
+    () => ({
+      dispo: activeVehicles.filter((v) => matchesFilter(v, 'dispo')).length,
+      jr: activeVehicles.filter((v) => matchesFilter(v, 'jr')).length,
+      carro: activeVehicles.filter((v) => matchesFilter(v, 'carro')).length,
+      entretien: activeVehicles.filter((v) => matchesFilter(v, 'entretien')).length,
+    }),
+    [activeVehicles]
+  )
 
-  const updateAddForm = (key: keyof VehicleForm, value: string) =>
-    setAddForm((prev) => ({ ...prev, [key]: value }))
+  const updateVehicleForm = (key: keyof VehicleForm, value: string) =>
+    setVehicleForm((prev) => ({ ...prev, [key]: value }))
 
-  const updateEditForm = (key: keyof VehicleForm, value: string) =>
-    setEditForm((prev) => ({ ...prev, [key]: value }))
+  const updateEditVehicleForm = (key: keyof VehicleForm, value: string) =>
+    setEditVehicleForm((prev) => ({ ...prev, [key]: value }))
 
   const updateParkingForm = (key: keyof ParkingForm, value: string) =>
     setParkingForm((prev) => ({ ...prev, [key]: value }))
 
-  const openManage = (vehicle: Vehicle) => {
-    setSelectedVehicle(vehicle)
-    setEditForm(toForm(vehicle))
-    setActionMessage(null)
-    setManageOpen(true)
-  }
+  const toggleFilter = (key: FilterKey) =>
+    setActiveFilters((prev) => (prev.includes(key) ? prev.filter((f) => f !== key) : [...prev, key]))
 
-  const openAddModal = () => {
+  const resetToMain = () => {
     setSidebarOpen(false)
-    setShowDeletedPanel(false)
-    setShowParkingLinksPanel(false)
-    setActionMessage(null)
-    setAddForm(emptyForm)
-    setAddOpen(true)
-  }
-
-  const openParkingModal = (parking?: ParkingLink) => {
-    setSidebarOpen(false)
-    setActionMessage(null)
-    setSelectedParkingLink(parking || null)
-    setParkingForm(parking ? toParkingForm(parking) : emptyParkingForm)
-    setParkingOpen(true)
-  }
-
-  const goActive = () => {
-    setSidebarOpen(false)
-    setShowDeletedPanel(false)
-    setShowParkingLinksPanel(false)
-    setSelectedParking(null)
-    setActiveFilters([])
+    setPageMode('vehicles')
     setViewMode('cards')
+    setSelectedParking(null)
+    setActionMessage(null)
+  }
+
+  const openAddVehicleModal = () => {
+    setSidebarOpen(false)
+    setVehicleForm(emptyVehicleForm)
+    setAddVehicleOpen(true)
+    setActionMessage(null)
+  }
+
+  const openManageVehicle = (vehicle: Vehicle) => {
+    setSelectedVehicle(vehicle)
+    setEditVehicleForm(toVehicleForm(vehicle))
+    setManageVehicleOpen(true)
+    setActionMessage(null)
+  }
+
+  const openAddParkingModal = () => {
+    setSidebarOpen(false)
+    setParkingForm(emptyParkingForm)
+    setAddParkingOpen(true)
+    setActionMessage(null)
+  }
+
+  const openManageParking = (parking: ParkingLink) => {
+    setSelectedParkingLink(parking)
+    setParkingForm(toParkingForm(parking))
+    setManageParkingOpen(true)
+    setActionMessage(null)
+  }
+
+  const openParkingVehicles = (parkingName: string) => {
+    setPageMode('vehicles')
+    setViewMode('parking')
+    setSelectedParking(parkingName)
+    setSidebarOpen(false)
+  }
+
+  const goToParkingLinks = () => {
+    setSidebarOpen(false)
+    setPageMode('parkingLinks')
+    setSearch('')
+    setActionMessage(null)
+  }
+
+  const goToDeleted = () => {
+    setSidebarOpen(false)
+    setPageMode('deleted')
+    setActionMessage(null)
+  }
+
+  const goToAssurances = () => {
+    setSidebarOpen(false)
+    setPageMode('assurances')
+    setActionMessage(null)
+  }
+
+  const goToClaims = () => {
+    setSidebarOpen(false)
+    setPageMode('claims')
+    setActionMessage(null)
   }
 
   async function handleAddVehicle() {
     setActionMessage(null)
-
-    if (!addForm.license_plate.trim()) {
+    if (!vehicleForm.license_plate.trim()) {
       setActionMessage("L'immatriculation est obligatoire.")
       return
     }
 
-    setSavingAdd(true)
+    setSavingVehicle(true)
 
     const payload = {
-      license_plate: addForm.license_plate.trim(),
-      brand: addForm.brand.trim() || null,
-      model: addForm.model.trim() || null,
-      mileage: addForm.mileage ? Number(addForm.mileage) : null,
-      next_service_km: addForm.next_service_km ? Number(addForm.next_service_km) : null,
-      parking_location: addForm.parking_location.trim() || null,
-      status: addForm.status.trim() || null,
-      bodywork_status: addForm.bodywork_status.trim() || null,
-      notes: addForm.notes.trim() || null,
+      license_plate: vehicleForm.license_plate.trim(),
+      brand: vehicleForm.brand.trim() || null,
+      model: vehicleForm.model.trim() || null,
+      mileage: vehicleForm.mileage ? Number(vehicleForm.mileage) : null,
+      next_service_km: vehicleForm.next_service_km ? Number(vehicleForm.next_service_km) : null,
+      parking_location: vehicleForm.parking_location.trim() || null,
+      status: vehicleForm.status.trim() || null,
+      bodywork_status: vehicleForm.bodywork_status.trim() || null,
+      notes: vehicleForm.notes.trim() || null,
       is_archived: false,
       archived_at: null,
       archive_reason: null,
     }
 
-    const { data, error } = await supabase
-      .from('vehicles')
-      .insert(payload)
-      .select('*')
-      .single()
+    const { data, error } = await supabase.from('vehicles').insert(payload).select('*').single()
 
     if (error) {
-      setActionMessage(`Erreur ajout : ${error.message}`)
-      setSavingAdd(false)
+      setActionMessage(`Erreur ajout véhicule : ${error.message}`)
+      setSavingVehicle(false)
       return
     }
 
     if (data) {
       setVehicleList((prev) => [data as Vehicle, ...prev])
+      setAddVehicleOpen(false)
+      setVehicleForm(emptyVehicleForm)
       setActionMessage('Véhicule ajouté avec succès.')
+      router.refresh()
     }
 
-    setSavingAdd(false)
-    setAddOpen(false)
-    setAddForm(emptyForm)
-    router.refresh()
+    setSavingVehicle(false)
   }
 
   async function handleSaveVehicle() {
     if (!selectedVehicle) return
 
+    setSavingEditVehicle(true)
     setActionMessage(null)
-    setSavingEdit(true)
 
     const payload = {
-      license_plate: editForm.license_plate.trim(),
-      brand: editForm.brand.trim() || null,
-      model: editForm.model.trim() || null,
-      mileage: editForm.mileage ? Number(editForm.mileage) : null,
-      next_service_km: editForm.next_service_km ? Number(editForm.next_service_km) : null,
-      parking_location: editForm.parking_location.trim() || null,
-      status: editForm.status.trim() || null,
-      bodywork_status: editForm.bodywork_status.trim() || null,
-      notes: editForm.notes.trim() || null,
+      license_plate: editVehicleForm.license_plate.trim(),
+      brand: editVehicleForm.brand.trim() || null,
+      model: editVehicleForm.model.trim() || null,
+      mileage: editVehicleForm.mileage ? Number(editVehicleForm.mileage) : null,
+      next_service_km: editVehicleForm.next_service_km ? Number(editVehicleForm.next_service_km) : null,
+      parking_location: editVehicleForm.parking_location.trim() || null,
+      status: editVehicleForm.status.trim() || null,
+      bodywork_status: editVehicleForm.bodywork_status.trim() || null,
+      notes: editVehicleForm.notes.trim() || null,
     }
 
     const { data, error } = await supabase
@@ -554,72 +475,20 @@ export default function VehicleDashboard({ vehicles }: Props) {
       .single()
 
     if (error) {
-      setActionMessage(`Erreur modification : ${error.message}`)
-      setSavingEdit(false)
+      setActionMessage(`Erreur modification véhicule : ${error.message}`)
+      setSavingEditVehicle(false)
       return
     }
 
     if (data) {
-      setVehicleList((prev) =>
-        prev.map((v) => (v.id === selectedVehicle.id ? (data as Vehicle) : v))
-      )
+      setVehicleList((prev) => prev.map((v) => (v.id === selectedVehicle.id ? (data as Vehicle) : v)))
+      setManageVehicleOpen(false)
       setSelectedVehicle(data as Vehicle)
       setActionMessage('Véhicule modifié avec succès.')
+      router.refresh()
     }
 
-    setSavingEdit(false)
-    setManageOpen(false)
-    router.refresh()
-  }
-
-  async function handleSaveParkingLink() {
-    setActionMessage(null)
-
-    const parkingName = parkingForm.parking_name.trim()
-    if (!parkingName) {
-      setActionMessage('Le nom du parking est obligatoire.')
-      return
-    }
-
-    setSavingParking(true)
-
-    const payload = {
-      parking_name: parkingName,
-      entry_address: parkingForm.entry_address.trim() || null,
-      exit_address: parkingForm.exit_address.trim() || null,
-      parking_url: parkingForm.parking_url.trim() || null,
-    }
-
-    const { data, error } = await supabase
-      .from('parking_links')
-      .upsert(payload, { onConflict: 'parking_name' })
-      .select('*')
-      .single()
-
-    if (error) {
-      setActionMessage(`Erreur parking : ${error.message}`)
-      setSavingParking(false)
-      return
-    }
-
-    if (data) {
-      const row = data as ParkingLink
-      setParkingLinks((prev) => {
-        const key = normalizeParkingName(row.parking_name)
-        const others = prev.filter(
-          (item) => normalizeParkingName(item.parking_name) !== key
-        )
-        return [...others, row].sort((a, b) =>
-          a.parking_name.localeCompare(b.parking_name)
-        )
-      })
-      setActionMessage('Parking enregistré avec succès.')
-    }
-
-    setSavingParking(false)
-    setParkingOpen(false)
-    setSelectedParkingLink(null)
-    setParkingForm(emptyParkingForm)
+    setSavingEditVehicle(false)
   }
 
   async function handleArchiveVehicle() {
@@ -630,8 +499,8 @@ export default function VehicleDashboard({ vehicles }: Props) {
     )
     if (!confirmed) return
 
+    setSavingEditVehicle(true)
     setActionMessage(null)
-    setSavingEdit(true)
 
     const archiveDate = new Date().toISOString()
 
@@ -646,40 +515,31 @@ export default function VehicleDashboard({ vehicles }: Props) {
 
     if (error) {
       setActionMessage(`Erreur archivage : ${error.message}`)
-      setSavingEdit(false)
+      setSavingEditVehicle(false)
       return
     }
 
     setVehicleList((prev) =>
       prev.map((v) =>
         v.id === selectedVehicle.id
-          ? {
-              ...v,
-              is_archived: true,
-              archived_at: archiveDate,
-              archive_reason: 'deleted_by_user',
-            }
+          ? { ...v, is_archived: true, archived_at: archiveDate, archive_reason: 'deleted_by_user' }
           : v
       )
     )
 
-    setSavingEdit(false)
-    setManageOpen(false)
+    setManageVehicleOpen(false)
+    setSavingEditVehicle(false)
     setActionMessage('Véhicule déplacé dans Récemment supprimés.')
     router.refresh()
   }
 
   async function handleRestoreVehicle(vehicle: Vehicle) {
-    setActionMessage(null)
     setRestoringId(vehicle.id)
+    setActionMessage(null)
 
     const { error } = await supabase
       .from('vehicles')
-      .update({
-        is_archived: false,
-        archived_at: null,
-        archive_reason: null,
-      })
+      .update({ is_archived: false, archived_at: null, archive_reason: null })
       .eq('id', vehicle.id)
 
     if (error) {
@@ -689,11 +549,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
     }
 
     setVehicleList((prev) =>
-      prev.map((v) =>
-        v.id === vehicle.id
-          ? { ...v, is_archived: false, archived_at: null, archive_reason: null }
-          : v
-      )
+      prev.map((v) => (v.id === vehicle.id ? { ...v, is_archived: false, archived_at: null, archive_reason: null } : v))
     )
 
     setRestoringId(null)
@@ -701,46 +557,107 @@ export default function VehicleDashboard({ vehicles }: Props) {
     router.refresh()
   }
 
-  const renderViewSwitch = () => (
-    <div className="inline-flex w-fit rounded-2xl border border-white/15 bg-[#1E1E1E] p-1">
-      <button
-        type="button"
-        onClick={() => {
-          setSelectedParking(null)
-          setViewMode('cards')
-        }}
-        className={`rounded-xl px-5 py-2 text-sm md:text-base ${
-          viewMode === 'cards' ? 'bg-white text-black' : 'text-zinc-300'
-        }`}
-      >
-        Vue cartes
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          setSelectedParking(null)
-          setViewMode('list')
-        }}
-        className={`rounded-xl px-5 py-2 text-sm md:text-base ${
-          viewMode === 'list' ? 'bg-white text-black' : 'text-zinc-300'
-        }`}
-      >
-        Vue liste
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          setSelectedParking(null)
-          setViewMode('parking')
-        }}
-        className={`rounded-xl px-5 py-2 text-sm md:text-base ${
-          viewMode === 'parking' ? 'bg-white text-black' : 'text-zinc-300'
-        }`}
-      >
-        Vue parkings
-      </button>
-    </div>
-  )
+  async function handleAddParking() {
+    setActionMessage(null)
+    if (!parkingForm.name.trim()) {
+      setActionMessage('Le nom du parking est obligatoire.')
+      return
+    }
+
+    setSavingParking(true)
+
+    const payload = {
+      name: parkingForm.name.trim(),
+      entry_address: parkingForm.entry_address.trim() || null,
+      exit_address: parkingForm.exit_address.trim() || null,
+      parking_url: parkingForm.parking_url.trim() || null,
+      notes: parkingForm.notes.trim() || null,
+    }
+
+    const { data, error } = await supabase.from('parkings').insert(payload).select('*').single()
+
+    if (error) {
+      setActionMessage(`Erreur ajout parking : ${error.message}`)
+      setSavingParking(false)
+      return
+    }
+
+    if (data) {
+      setParkingList((prev) => [...prev, data as ParkingLink])
+      setAddParkingOpen(false)
+      setParkingForm(emptyParkingForm)
+      setActionMessage('Parking ajouté avec succès.')
+      router.refresh()
+    }
+
+    setSavingParking(false)
+  }
+
+  async function handleSaveParking() {
+    if (!selectedParkingLink) return
+
+    setActionMessage(null)
+    setSavingParking(true)
+
+    const payload = {
+      name: parkingForm.name.trim(),
+      entry_address: parkingForm.entry_address.trim() || null,
+      exit_address: parkingForm.exit_address.trim() || null,
+      parking_url: parkingForm.parking_url.trim() || null,
+      notes: parkingForm.notes.trim() || null,
+    }
+
+    const isVirtual = selectedParkingLink.id < 0
+
+    const query = isVirtual
+      ? supabase.from('parkings').insert(payload).select('*').single()
+      : supabase.from('parkings').update(payload).eq('id', selectedParkingLink.id).select('*').single()
+
+    const { data, error } = await query
+
+    if (error) {
+      setActionMessage(`Erreur parking : ${error.message}`)
+      setSavingParking(false)
+      return
+    }
+
+    if (data) {
+      setParkingList((prev) =>
+        isVirtual
+          ? [...prev, data as ParkingLink]
+          : prev.map((p) => (p.id === selectedParkingLink.id ? (data as ParkingLink) : p))
+      )
+
+      setManageParkingOpen(false)
+      setSelectedParkingLink(data as ParkingLink)
+      setActionMessage('Parking enregistré avec succès.')
+      router.refresh()
+    }
+
+    setSavingParking(false)
+  }
+
+  const title =
+    pageMode === 'parkingLinks'
+      ? 'Liens parkings'
+      : pageMode === 'deleted'
+      ? 'Récemment supprimés'
+      : pageMode === 'assurances'
+      ? 'Assurances'
+      : pageMode === 'claims'
+      ? 'Sinistres'
+      : 'Flotte de véhicules'
+
+  const countLabel =
+    pageMode === 'parkingLinks'
+      ? `${visibleParkingLinks.length} parking${visibleParkingLinks.length > 1 ? 's' : ''}`
+      : pageMode === 'deleted'
+      ? `${archivedVehicles.length} supprimé${archivedVehicles.length > 1 ? 's' : ''}`
+      : pageMode === 'vehicles' && viewMode === 'parking' && !selectedParking
+      ? `${visibleParkingNames.length} parking${visibleParkingNames.length > 1 ? 's' : ''}`
+      : pageMode === 'vehicles'
+      ? `${filteredVehicles.length} véhicule${filteredVehicles.length > 1 ? 's' : ''}`
+      : ''
 
   const renderVehicleCard = (vehicle: Vehicle) => (
     <div
@@ -761,12 +678,12 @@ export default function VehicleDashboard({ vehicles }: Props) {
               vehicle.status
             )}`}
           >
-            {getStatusLabel(vehicle.status)}
+            {getStatusText(vehicle.status)}
           </div>
 
           <button
             type="button"
-            onClick={() => openManage(vehicle)}
+            onClick={() => openManageVehicle(vehicle)}
             className="rounded-2xl border border-white/15 px-4 py-2 text-sm font-medium text-white hover:bg-white/5"
           >
             Gérer
@@ -781,35 +698,25 @@ export default function VehicleDashboard({ vehicles }: Props) {
             <p className="text-4xl font-semibold leading-tight">
               {vehicle.brand} {vehicle.model}
             </p>
-            <p className="mt-5 text-3xl font-medium text-zinc-200">
-              {formatKm(vehicle.mileage)} km
-            </p>
+            <p className="mt-5 text-3xl font-medium text-zinc-200">{formatKm(vehicle.mileage)} km</p>
           </div>
 
           <div>
             <p className="text-lg text-zinc-400">Emplacement</p>
-            <p className="text-4xl font-semibold leading-tight">
-              {vehicle.parking_location || '—'}
-            </p>
+            <p className="text-4xl font-semibold leading-tight">{parkingNameOf(vehicle.parking_location)}</p>
           </div>
 
           <div>
             <p className="text-lg text-zinc-400">Carrosserie</p>
-            <p
-              className={`text-4xl font-semibold leading-tight ${getBodyworkColor(
-                vehicle.bodywork_status
-              )}`}
-            >
+            <p className={`text-4xl font-semibold leading-tight ${getBodyworkColor(vehicle.bodywork_status)}`}>
               {getBodyworkLabel(vehicle.bodywork_status)}
             </p>
           </div>
 
           <div className="flex items-end lg:justify-end">
             <p className="text-2xl text-zinc-300">
-              Prochain entretien:{' '}
-              <span className="font-semibold text-white">
-                {formatKm(vehicle.next_service_km)} km
-              </span>
+              Prochain entretien :{' '}
+              <span className="font-semibold text-white">{formatKm(vehicle.next_service_km)} km</span>
             </p>
           </div>
         </div>
@@ -823,95 +730,8 @@ export default function VehicleDashboard({ vehicles }: Props) {
           </div>
         </div>
 
-        {vehicle.notes ? (
-          <p className="mt-4 text-lg text-zinc-300">{vehicle.notes}</p>
-        ) : null}
+        {vehicle.notes ? <p className="mt-4 text-lg text-zinc-300">{vehicle.notes}</p> : null}
       </Link>
-    </div>
-  )
-
-  const renderVehicleList = (items: Vehicle[]) => (
-    <div className="overflow-hidden rounded-[28px] border border-white/10 bg-[#1E1E1E]">
-      <div className="hidden grid-cols-8 gap-4 border-b border-white/10 bg-[#181818] px-6 py-4 text-sm font-medium text-zinc-400 md:grid">
-        <div>Immatriculation</div>
-        <div>Véhicule</div>
-        <div>Km</div>
-        <div>Entretien</div>
-        <div>Parking</div>
-        <div>Statut</div>
-        <div>Carrosserie</div>
-        <div>Action</div>
-      </div>
-
-      <div className="divide-y divide-white/10">
-        {items.map((vehicle) => (
-          <div
-            key={vehicle.id}
-            className="grid grid-cols-1 gap-4 px-6 py-5 transition hover:bg-white/[0.03] md:grid-cols-8 md:items-center"
-          >
-            <Link href={`/vehicles/${vehicle.id}`} className="block">
-              <p className="text-xs text-zinc-500 md:hidden">Immatriculation</p>
-              <p className="font-semibold text-white">{vehicle.license_plate}</p>
-            </Link>
-
-            <Link href={`/vehicles/${vehicle.id}`} className="block">
-              <p className="text-xs text-zinc-500 md:hidden">Véhicule</p>
-              <p className="text-white">
-                {vehicle.brand} {vehicle.model}
-              </p>
-            </Link>
-
-            <Link href={`/vehicles/${vehicle.id}`} className="block">
-              <p className="text-xs text-zinc-500 md:hidden">Km</p>
-              <p className="text-zinc-200">{formatKm(vehicle.mileage)} km</p>
-            </Link>
-
-            <Link href={`/vehicles/${vehicle.id}`} className="block">
-              <p className="text-xs text-zinc-500 md:hidden">Entretien</p>
-              <p className="text-zinc-200">{formatKm(vehicle.next_service_km)} km</p>
-            </Link>
-
-            <Link href={`/vehicles/${vehicle.id}`} className="block">
-              <p className="text-xs text-zinc-500 md:hidden">Parking</p>
-              <p className="text-zinc-200">{vehicle.parking_location || '—'}</p>
-            </Link>
-
-            <Link href={`/vehicles/${vehicle.id}`} className="block">
-              <p className="text-xs text-zinc-500 md:hidden">Statut</p>
-              <span
-                className={`inline-flex w-fit rounded-full px-3 py-1 text-sm font-medium ${getStatusBadge(
-                  vehicle.status
-                )}`}
-              >
-                {getStatusLabel(vehicle.status)}
-              </span>
-            </Link>
-
-            <Link href={`/vehicles/${vehicle.id}`} className="block">
-              <p className="text-xs text-zinc-500 md:hidden">Carrosserie</p>
-              <p className={`font-medium ${getBodyworkColor(vehicle.bodywork_status)}`}>
-                {getBodyworkLabel(vehicle.bodywork_status)}
-              </p>
-            </Link>
-
-            <div>
-              <button
-                type="button"
-                onClick={() => openManage(vehicle)}
-                className="rounded-xl border border-white/15 px-4 py-2 text-sm font-medium text-white hover:bg-white/5"
-              >
-                Gérer
-              </button>
-            </div>
-
-            {vehicle.notes ? (
-              <div className="md:col-span-8">
-                <p className="text-sm text-zinc-400">{vehicle.notes}</p>
-              </div>
-            ) : null}
-          </div>
-        ))}
-      </div>
     </div>
   )
 
@@ -928,103 +748,11 @@ export default function VehicleDashboard({ vehicles }: Props) {
               ☰
             </button>
 
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight md:text-5xl">
-                {showParkingLinksPanel ? 'Liens parkings' : 'Flotte de véhicules'}
-              </h1>
-            </div>
+            <h1 className="text-3xl font-bold tracking-tight md:text-5xl">{title}</h1>
           </div>
 
-          <div className="text-right text-lg text-zinc-300 md:text-2xl">
-            {showDeletedPanel
-              ? `${archivedVehicles.length} supprimé${archivedVehicles.length > 1 ? 's' : ''}`
-              : showParkingLinksPanel
-              ? `${parkingLinkCards.length} parking${parkingLinkCards.length > 1 ? 's' : ''}`
-              : viewMode === 'parking'
-              ? selectedParking
-                ? `${selectedParkingVehicles.length} véhicule${selectedParkingVehicles.length > 1 ? 's' : ''}`
-                : `${parkingGroups.length} parking${parkingGroups.length > 1 ? 's' : ''}`
-              : `${filteredVehicles.length} véhicule${filteredVehicles.length > 1 ? 's' : ''}`}
-          </div>
+          <div className="text-right text-lg text-zinc-300 md:text-2xl">{countLabel}</div>
         </div>
-
-        {!showDeletedPanel && !showParkingLinksPanel && (
-          <>
-            <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {statCards.map((card) => (
-                <button
-                  key={card.key}
-                  type="button"
-                  onClick={() => toggleFilter(card.key)}
-                  className={`rounded-3xl border bg-[#1E1E1E] p-6 text-left transition ${
-                    activeFilters.includes(card.key) ? card.borderColor : 'border-transparent'
-                  }`}
-                >
-                  <p className="text-lg text-zinc-300">{card.label}</p>
-                  <p className={`mt-4 text-5xl font-semibold ${card.textColor}`}>
-                    {card.total}
-                  </p>
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-
-        {!showDeletedPanel && (
-          <div className="mb-6">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => {
-                setSelectedParking(null)
-                setSearch(e.target.value)
-              }}
-              placeholder={
-                showParkingLinksPanel
-                  ? 'Rechercher par nom de parking, adresse entrée, adresse sortie ou lien'
-                  : viewMode === 'parking'
-                  ? 'Rechercher par parking, immatriculation, marque, statut ou note'
-                  : 'Rechercher par immatriculation, marque, parking, statut ou note'
-              }
-              className="w-full rounded-2xl border border-white/10 bg-[#1E1E1E] px-5 py-4 text-lg text-white outline-none placeholder:text-zinc-500"
-            />
-          </div>
-        )}
-
-        {!showDeletedPanel && !showParkingLinksPanel && (
-          <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={clearFilters}
-                className={`rounded-2xl border px-6 py-3 text-lg ${
-                  activeFilters.length === 0
-                    ? 'border-white bg-white text-black'
-                    : 'border-white/20 text-white'
-                }`}
-              >
-                Tous
-              </button>
-
-              {filterTabs.map((tab) => (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => toggleFilter(tab.key)}
-                  className={`rounded-2xl border px-6 py-3 text-lg ${
-                    activeFilters.includes(tab.key)
-                      ? 'border-white bg-white text-black'
-                      : 'border-white/20 text-white'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            {renderViewSwitch()}
-          </div>
-        )}
 
         {actionMessage ? (
           <div className="mb-6 rounded-2xl border border-white/10 bg-[#1E1E1E] px-4 py-3 text-sm text-zinc-300">
@@ -1032,142 +760,381 @@ export default function VehicleDashboard({ vehicles }: Props) {
           </div>
         ) : null}
 
-        {showParkingLinksPanel ? (
-          <div className="space-y-5">
-            <div className="flex justify-end">
+        {pageMode === 'vehicles' && (
+          <>
+            <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <button
                 type="button"
-                onClick={() => openParkingModal()}
-                className={modalBtnCls}
+                onClick={() => toggleFilter('dispo')}
+                className={`rounded-3xl border bg-[#1E1E1E] p-6 text-left transition ${
+                  activeFilters.includes('dispo') ? 'border-emerald-500/60' : 'border-transparent'
+                }`}
+              >
+                <p className="text-lg text-zinc-300">Disponibles</p>
+                <p className="mt-4 text-5xl font-semibold text-emerald-400">{stats.dispo}</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => toggleFilter('jr')}
+                className={`rounded-3xl border bg-[#1E1E1E] p-6 text-left transition ${
+                  activeFilters.includes('jr') ? 'border-[#6FAAF2]/60' : 'border-transparent'
+                }`}
+              >
+                <p className="text-lg text-zinc-300">JR</p>
+                <p className="mt-4 text-5xl font-semibold text-[#6FAAF2]">{stats.jr}</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => toggleFilter('carro')}
+                className={`rounded-3xl border bg-[#1E1E1E] p-6 text-left transition ${
+                  activeFilters.includes('carro') ? 'border-[#F2AE2E]/60' : 'border-transparent'
+                }`}
+              >
+                <p className="text-lg text-zinc-300">Carrosserie</p>
+                <p className="mt-4 text-5xl font-semibold text-[#F2AE2E]">{stats.carro}</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => toggleFilter('entretien')}
+                className={`rounded-3xl border bg-[#1E1E1E] p-6 text-left transition ${
+                  activeFilters.includes('entretien') ? 'border-[#F55252]/60' : 'border-transparent'
+                }`}
+              >
+                <p className="text-lg text-zinc-300">Entretien dû</p>
+                <p className="mt-4 text-5xl font-semibold text-[#F55252]">{stats.entretien}</p>
+              </button>
+            </div>
+
+            <div className="mb-6">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Rechercher par immatriculation, marque, parking, statut ou note"
+                className="w-full rounded-2xl border border-white/10 bg-[#1E1E1E] px-5 py-4 text-lg text-white outline-none placeholder:text-zinc-500"
+              />
+            </div>
+
+            <div className="mb-6 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => setActiveFilters([])}
+                  className={`rounded-2xl border px-6 py-3 text-lg ${
+                    activeFilters.length === 0 ? 'border-white bg-white text-black' : 'border-white/20 text-white'
+                  }`}
+                >
+                  Tous
+                </button>
+
+                {filterConfig.map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => toggleFilter(item.key)}
+                    className={`rounded-2xl border px-6 py-3 text-lg ${
+                      activeFilters.includes(item.key)
+                        ? 'border-white bg-white text-black'
+                        : 'border-white/20 text-white'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="inline-flex w-fit rounded-2xl border border-white/15 bg-[#1E1E1E] p-1">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('cards')}
+                  className={`rounded-xl px-5 py-2 text-sm md:text-base ${
+                    viewMode === 'cards' ? 'bg-white text-black' : 'text-zinc-300'
+                  }`}
+                >
+                  Vue cartes
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setViewMode('list')}
+                  className={`rounded-xl px-5 py-2 text-sm md:text-base ${
+                    viewMode === 'list' ? 'bg-white text-black' : 'text-zinc-300'
+                  }`}
+                >
+                  Vue liste
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setViewMode('parking')}
+                  className={`rounded-xl px-5 py-2 text-sm md:text-base ${
+                    viewMode === 'parking' ? 'bg-white text-black' : 'text-zinc-300'
+                  }`}
+                >
+                  Vue parkings
+                </button>
+              </div>
+            </div>
+
+            {viewMode === 'parking' && (
+              <div className="mb-6 rounded-[28px] border border-white/10 bg-[#1E1E1E] p-5">
+                <div className="mb-4 flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedParking(null)}
+                    className={`rounded-2xl border px-4 py-2 text-sm ${
+                      selectedParking === null ? 'border-white bg-white text-black' : 'border-white/15 text-zinc-300'
+                    }`}
+                  >
+                    Tous les parkings
+                  </button>
+
+                  {visibleParkingNames.map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => setSelectedParking(name)}
+                      className={`rounded-2xl border px-4 py-2 text-sm ${
+                        selectedParking === name
+                          ? 'border-white bg-white text-black'
+                          : 'border-white/15 text-zinc-300'
+                      }`}
+                    >
+                      {name} <span className="ml-1 text-xs opacity-70">({parkingCounts.get(name) || 0})</span>
+                    </button>
+                  ))}
+                </div>
+
+                <p className="text-sm text-zinc-400">
+                  Astuce : clique sur un parking pour afficher directement les véhicules et accéder plus vite à leurs
+                  inspections.
+                </p>
+              </div>
+            )}
+
+            {viewMode === 'cards' || viewMode === 'parking' ? (
+              filteredVehicles.length ? (
+                <div className="space-y-5">{filteredVehicles.map(renderVehicleCard)}</div>
+              ) : (
+                <div className="rounded-[28px] border border-white/10 bg-[#1E1E1E] p-6 text-zinc-400">
+                  Aucun véhicule trouvé.
+                </div>
+              )
+            ) : filteredVehicles.length ? (
+              <div className="overflow-hidden rounded-[28px] border border-white/10 bg-[#1E1E1E]">
+                <div className="hidden grid-cols-8 gap-4 border-b border-white/10 bg-[#181818] px-6 py-4 text-sm font-medium text-zinc-400 md:grid">
+                  <div>Immatriculation</div>
+                  <div>Véhicule</div>
+                  <div>Km</div>
+                  <div>Entretien</div>
+                  <div>Parking</div>
+                  <div>Statut</div>
+                  <div>Carrosserie</div>
+                  <div>Action</div>
+                </div>
+
+                <div className="divide-y divide-white/10">
+                  {filteredVehicles.map((vehicle) => (
+                    <div
+                      key={vehicle.id}
+                      className="grid grid-cols-1 gap-4 px-6 py-5 transition hover:bg-white/[0.03] md:grid-cols-8 md:items-center"
+                    >
+                      <Link href={`/vehicles/${vehicle.id}`} className="block">
+                        <p className="text-xs text-zinc-500 md:hidden">Immatriculation</p>
+                        <p className="font-semibold text-white">{vehicle.license_plate}</p>
+                      </Link>
+
+                      <Link href={`/vehicles/${vehicle.id}`} className="block">
+                        <p className="text-xs text-zinc-500 md:hidden">Véhicule</p>
+                        <p className="text-white">
+                          {vehicle.brand} {vehicle.model}
+                        </p>
+                      </Link>
+
+                      <Link href={`/vehicles/${vehicle.id}`} className="block">
+                        <p className="text-xs text-zinc-500 md:hidden">Km</p>
+                        <p className="text-zinc-200">{formatKm(vehicle.mileage)} km</p>
+                      </Link>
+
+                      <Link href={`/vehicles/${vehicle.id}`} className="block">
+                        <p className="text-xs text-zinc-500 md:hidden">Entretien</p>
+                        <p className="text-zinc-200">{formatKm(vehicle.next_service_km)} km</p>
+                      </Link>
+
+                      <Link href={`/vehicles/${vehicle.id}`} className="block">
+                        <p className="text-xs text-zinc-500 md:hidden">Parking</p>
+                        <p className="text-zinc-200">{parkingNameOf(vehicle.parking_location)}</p>
+                      </Link>
+
+                      <Link href={`/vehicles/${vehicle.id}`} className="block">
+                        <p className="text-xs text-zinc-500 md:hidden">Statut</p>
+                        <span
+                          className={`inline-flex w-fit rounded-full px-3 py-1 text-sm font-medium ${getStatusBadge(
+                            vehicle.status
+                          )}`}
+                        >
+                          {getStatusText(vehicle.status)}
+                        </span>
+                      </Link>
+
+                      <Link href={`/vehicles/${vehicle.id}`} className="block">
+                        <p className="text-xs text-zinc-500 md:hidden">Carrosserie</p>
+                        <p className={`font-medium ${getBodyworkColor(vehicle.bodywork_status)}`}>
+                          {getBodyworkLabel(vehicle.bodywork_status)}
+                        </p>
+                      </Link>
+
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => openManageVehicle(vehicle)}
+                          className="rounded-xl border border-white/15 px-4 py-2 text-sm font-medium text-white hover:bg-white/5"
+                        >
+                          Gérer
+                        </button>
+                      </div>
+
+                      {vehicle.notes ? (
+                        <div className="md:col-span-8">
+                          <p className="text-sm text-zinc-400">{vehicle.notes}</p>
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-[28px] border border-white/10 bg-[#1E1E1E] p-6 text-zinc-400">
+                Aucun véhicule trouvé.
+              </div>
+            )}
+          </>
+        )}
+
+        {pageMode === 'parkingLinks' && (
+          <>
+            <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex-1">
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Rechercher par nom, adresse entrée, adresse sortie ou lien"
+                  className="w-full rounded-2xl border border-white/10 bg-[#1E1E1E] px-5 py-4 text-lg text-white outline-none placeholder:text-zinc-500"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={openAddParkingModal}
+                className="rounded-2xl bg-white px-5 py-4 text-lg font-semibold text-black"
               >
                 Ajouter un parking
               </button>
             </div>
 
-            {parkingLinkCards.length === 0 ? (
-              <div className="rounded-[28px] border border-white/10 bg-[#1E1E1E] p-6 text-zinc-400">
-                Aucun parking trouvé.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {parkingLinkCards.map((parking) => (
+            {visibleParkingLinks.length ? (
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+                {visibleParkingLinks.map((parking) => (
                   <div
-                    key={normalizeParkingName(parking.parking_name)}
-                    className="rounded-[24px] border border-white/10 bg-[#1E1E1E] p-5"
+                    key={parking.id}
+                    className="rounded-[28px] border border-white/10 bg-[#1E1E1E] p-5"
                   >
                     <div className="mb-4 flex items-start justify-between gap-3">
                       <div>
-                        <h2 className="text-2xl font-bold text-white">
-                          {parking.parking_name}
-                        </h2>
+                        <h2 className="text-2xl font-bold">{parking.name}</h2>
+                        <p className="mt-1 text-sm text-zinc-500">
+                          {parkingCounts.get(parking.name) || 0} véhicule
+                          {(parkingCounts.get(parking.name) || 0) > 1 ? 's' : ''}
+                        </p>
                       </div>
 
                       <button
                         type="button"
-                        onClick={() => openParkingModal(parking)}
-                        className="rounded-xl border border-white/15 px-3 py-2 text-sm text-white hover:bg-white/5"
+                        onClick={() => openManageParking(parking)}
+                        className="rounded-xl border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5"
                       >
                         Gérer
                       </button>
                     </div>
 
-                    <div className="space-y-3 text-sm text-zinc-300">
-                      <div className="rounded-2xl bg-[#151515] px-4 py-3">
-                        <p className="mb-1 text-xs uppercase tracking-[0.08em] text-zinc-500">
-                          Adresse entrée
-                        </p>
-                        <p>{parking.entry_address || '—'}</p>
+                    <div className="space-y-3">
+                      <div className="rounded-2xl bg-[#151515] px-4 py-4">
+                        <p className="text-xs uppercase tracking-wide text-zinc-500">Adresse entrée</p>
+                        <p className="mt-2 text-zinc-200">{parking.entry_address || '—'}</p>
                       </div>
 
-                      <div className="rounded-2xl bg-[#151515] px-4 py-3">
-                        <p className="mb-1 text-xs uppercase tracking-[0.08em] text-zinc-500">
-                          Adresse sortie
-                        </p>
-                        <p>{parking.exit_address || '—'}</p>
+                      <div className="rounded-2xl bg-[#151515] px-4 py-4">
+                        <p className="text-xs uppercase tracking-wide text-zinc-500">Adresse sortie</p>
+                        <p className="mt-2 text-zinc-200">{parking.exit_address || '—'}</p>
                       </div>
 
-                      <div className="rounded-2xl bg-[#151515] px-4 py-3">
-                        <p className="mb-1 text-xs uppercase tracking-[0.08em] text-zinc-500">
-                          Lien du parking
-                        </p>
+                      <div className="rounded-2xl bg-[#151515] px-4 py-4">
+                        <p className="text-xs uppercase tracking-wide text-zinc-500">Lien du parking</p>
                         {parking.parking_url ? (
                           <a
                             href={parking.parking_url}
                             target="_blank"
                             rel="noreferrer"
-                            className="break-all text-[#6FAAF2] underline underline-offset-4"
+                            className="mt-2 block break-all text-[#6FAAF2] underline"
                           >
                             {parking.parking_url}
                           </a>
                         ) : (
-                          <p>—</p>
+                          <p className="mt-2 text-zinc-200">—</p>
                         )}
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowParkingLinksPanel(false)
-                          setViewMode('parking')
-                          setSelectedParking(parking.parking_name)
-                        }}
-                        className="w-full rounded-2xl border border-white/15 px-4 py-3 text-sm font-medium text-white hover:bg-white/5"
-                      >
-                        Voir les véhicules de ce parking
-                      </button>
+                      {parking.notes ? (
+                        <div className="rounded-2xl bg-[#151515] px-4 py-4">
+                          <p className="text-xs uppercase tracking-wide text-zinc-500">Notes</p>
+                          <p className="mt-2 text-zinc-200">{parking.notes}</p>
+                        </div>
+                      ) : null}
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={() => openParkingVehicles(parking.name)}
+                      className="mt-4 w-full rounded-2xl border border-white/15 px-4 py-3 text-sm text-white hover:bg-white/5"
+                    >
+                      Voir les véhicules de ce parking
+                    </button>
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-        ) : showDeletedPanel ? (
-          <div className="rounded-[28px] border border-white/10 bg-[#1E1E1E] p-6">
-            <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h2 className="text-2xl font-bold">Récemment supprimés</h2>
-                <p className="mt-1 text-zinc-400">
-                  Les véhicules restent récupérables pendant 30 jours.
-                </p>
+            ) : (
+              <div className="rounded-[28px] border border-white/10 bg-[#1E1E1E] p-6 text-zinc-400">
+                Aucun parking trouvé.
               </div>
+            )}
+          </>
+        )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  setShowDeletedPanel(false)
-                  clearFilters()
-                }}
-                className={ghostBtnCls}
-              >
-                Retour aux véhicules actifs
-              </button>
+        {pageMode === 'deleted' && (
+          <div className="rounded-[28px] border border-white/10 bg-[#1E1E1E] p-6">
+            <div className="mb-5">
+              <h2 className="text-2xl font-bold">Récemment supprimés</h2>
+              <p className="mt-1 text-zinc-400">Les véhicules restent récupérables pendant 30 jours.</p>
             </div>
 
-            {archivedVehicles.length === 0 ? (
-              <div className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-4 text-zinc-400">
-                Aucun véhicule dans Récemment supprimés.
-              </div>
-            ) : (
+            {archivedVehicles.length ? (
               <div className="space-y-4">
                 {archivedVehicles.map((vehicle) => (
-                  <div
-                    key={vehicle.id}
-                    className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-4"
-                  >
+                  <div key={vehicle.id} className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-4">
                     <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                       <div>
-                        <div className="text-lg font-semibold text-white">
-                          {vehicle.license_plate}
-                        </div>
+                        <div className="text-lg font-semibold text-white">{vehicle.license_plate}</div>
                         <div className="mt-1 text-sm text-zinc-400">
                           {vehicle.brand || '—'} {vehicle.model || ''}
                         </div>
                         <div className="mt-2 text-sm text-zinc-500">
                           Archivé le{' '}
-                          {vehicle.archived_at
-                            ? new Date(vehicle.archived_at).toLocaleDateString('fr-FR')
-                            : '—'}{' '}
-                          • {daysLeftFromArchive(vehicle.archived_at)} jour
+                          {vehicle.archived_at ? new Date(vehicle.archived_at).toLocaleDateString('fr-FR') : '—'} •{' '}
+                          {daysLeftFromArchive(vehicle.archived_at)} jour
                           {daysLeftFromArchive(vehicle.archived_at) > 1 ? 's' : ''} restants
                         </div>
                       </div>
@@ -1176,7 +1143,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
                         type="button"
                         onClick={() => handleRestoreVehicle(vehicle)}
                         disabled={restoringId === vehicle.id}
-                        className={modalBtnCls}
+                        className="rounded-2xl bg-white px-5 py-3 font-semibold text-black disabled:opacity-50"
                       >
                         {restoringId === vehicle.id ? 'Restauration...' : 'Restaurer'}
                       </button>
@@ -1184,114 +1151,56 @@ export default function VehicleDashboard({ vehicles }: Props) {
                   </div>
                 ))}
               </div>
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-4 text-zinc-400">
+                Aucun véhicule dans Récemment supprimés.
+              </div>
             )}
           </div>
-        ) : viewMode === 'parking' ? (
-          selectedParking ? (
-            <div className="space-y-5">
-              <div className="rounded-[28px] border border-white/10 bg-[#1E1E1E] p-6">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <h2 className="text-2xl font-bold">{selectedParking}</h2>
-                    <p className="mt-1 text-zinc-400">
-                      {selectedParkingVehicles.length} véhicule
-                      {selectedParkingVehicles.length > 1 ? 's' : ''} dans ce parking
-                    </p>
-                  </div>
+        )}
 
-                  <button
-                    type="button"
-                    onClick={() => setSelectedParking(null)}
-                    className={ghostBtnCls}
-                  >
-                    Retour aux parkings
-                  </button>
-                </div>
+        {(pageMode === 'assurances' || pageMode === 'claims') && (
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+            <div className="rounded-[28px] border border-white/10 bg-[#1E1E1E] p-6">
+              <h2 className="text-2xl font-bold">{pageMode === 'assurances' ? 'Assurances' : 'Sinistres'}</h2>
+              <p className="mt-3 text-zinc-400">
+                Cette section est prête à accueillir les prochains modules. Tu peux y connecter ensuite :
+              </p>
+              <ul className="mt-4 space-y-2 text-zinc-300">
+                <li>• dossiers Getaround / AXA / BCA</li>
+                <li>• montants et statuts</li>
+                <li>• photos / pièces jointes</li>
+                <li>• accès rapide aux véhicules liés</li>
+                <li>• suivi opérationnel</li>
+              </ul>
+            </div>
+
+            <div className="rounded-[28px] border border-white/10 bg-[#1E1E1E] p-6">
+              <h2 className="text-2xl font-bold">Amélioration utile</h2>
+              <p className="mt-3 text-zinc-400">
+                Pour la suite, le plus intéressant sera d’ajouter des coordonnées GPS sur les parkings pour afficher
+                une carte et accélérer les trajets / programmations.
+              </p>
+              <div className="mt-5 rounded-2xl bg-[#151515] p-4 text-sm text-zinc-300">
+                Colonnes futures conseillées : <span className="font-semibold">latitude</span> et{' '}
+                <span className="font-semibold">longitude</span> dans la table parkings.
               </div>
-
-              {renderVehicleList(selectedParkingVehicles)}
             </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {parkingGroups.length === 0 ? (
-                <div className="rounded-[28px] border border-white/10 bg-[#1E1E1E] p-6 text-zinc-400">
-                  Aucun parking trouvé.
-                </div>
-              ) : (
-                parkingGroups.map((group) => (
-                  <button
-                    key={group.parking}
-                    type="button"
-                    onClick={() => setSelectedParking(group.parking)}
-                    className="rounded-[28px] border border-white/10 bg-[#1E1E1E] p-6 text-left transition hover:bg-[#242424]"
-                  >
-                    <div className="mb-4 flex items-center justify-between gap-3">
-                      <h2 className="text-2xl font-bold text-white">{group.parking}</h2>
-                      <span className="rounded-full border border-white/10 bg-[#151515] px-3 py-1 text-sm text-zinc-300">
-                        {group.vehicles.length}
-                      </span>
-                    </div>
-
-                    <div className="space-y-2">
-                      {group.vehicles.slice(0, 4).map((vehicle) => (
-                        <div
-                          key={vehicle.id}
-                          className="flex items-center justify-between rounded-xl bg-[#151515] px-3 py-3"
-                        >
-                          <div>
-                            <div className="font-semibold text-white">
-                              {vehicle.license_plate}
-                            </div>
-                            <div className="text-sm text-zinc-400">
-                              {vehicle.brand} {vehicle.model}
-                            </div>
-                          </div>
-
-                          <div
-                            className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${getStatusBadge(
-                              vehicle.status
-                            )}`}
-                          >
-                            {getStatusLabel(vehicle.status)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {group.vehicles.length > 4 ? (
-                      <div className="mt-4 text-sm text-zinc-400">
-                        + {group.vehicles.length - 4} autre
-                        {group.vehicles.length - 4 > 1 ? 's' : ''} véhicule
-                        {group.vehicles.length - 4 > 1 ? 's' : ''}
-                      </div>
-                    ) : null}
-                  </button>
-                ))
-              )}
-            </div>
-          )
-        ) : viewMode === 'cards' ? (
-          <div className="space-y-5">{filteredVehicles.map(renderVehicleCard)}</div>
-        ) : (
-          renderVehicleList(filteredVehicles)
+          </div>
         )}
       </div>
 
       {sidebarOpen && (
         <>
-          <div
-            className="fixed inset-0 z-40 bg-black/60"
-            onClick={() => setSidebarOpen(false)}
-          />
+          <div className="fixed inset-0 z-40 bg-black/60" onClick={() => setSidebarOpen(false)} />
           <div className="fixed left-0 top-0 z-50 h-full w-[320px] max-w-[85vw] border-r border-white/10 bg-[#121212] p-5 shadow-2xl">
-            <div className="mb-6 flex items-start justify-between gap-3">
+            <div className="mb-4 flex items-center justify-between gap-3">
               <button
                 type="button"
-                onClick={goActive}
-                className="flex-1 rounded-2xl border border-white/10 bg-[#1E1E1E] px-4 py-4 text-left hover:bg-white/5"
+                onClick={resetToMain}
+                className="rounded-2xl border border-white/10 bg-[#1E1E1E] px-4 py-3 text-left font-semibold hover:bg-white/5"
               >
-                <div className="text-sm font-medium text-zinc-400">Menu principal</div>
-                <div className="mt-1 text-2xl font-bold text-white">Menu</div>
+                Menu principal
               </button>
 
               <button
@@ -1306,20 +1215,15 @@ export default function VehicleDashboard({ vehicles }: Props) {
             <div className="space-y-3">
               <button
                 type="button"
-                onClick={goActive}
-                className="w-full rounded-2xl border border-white/10 bg-[#1E1E1E] px-4 py-4 text-left text-lg font-semibold hover:bg-white/5"
+                onClick={openAddVehicleModal}
+                className="w-full rounded-2xl border border-white/10 bg-white px-4 py-4 text-left text-lg font-semibold text-black"
               >
-                Véhicules actifs
+                Ajouter un véhicule
               </button>
 
               <button
                 type="button"
-                onClick={() => {
-                  setSidebarOpen(false)
-                  setShowDeletedPanel(false)
-                  setShowParkingLinksPanel(true)
-                  setSelectedParking(null)
-                }}
+                onClick={goToParkingLinks}
                 className="w-full rounded-2xl border border-white/10 bg-[#1E1E1E] px-4 py-4 text-left text-lg font-semibold hover:bg-white/5"
               >
                 Liens parkings
@@ -1327,20 +1231,7 @@ export default function VehicleDashboard({ vehicles }: Props) {
 
               <button
                 type="button"
-                onClick={() => openParkingModal()}
-                className="w-full rounded-2xl border border-white/10 bg-[#1E1E1E] px-4 py-4 text-left text-lg font-semibold hover:bg-white/5"
-              >
-                Ajouter un parking
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setSidebarOpen(false)
-                  setShowDeletedPanel(true)
-                  setShowParkingLinksPanel(false)
-                  setSelectedParking(null)
-                }}
+                onClick={goToDeleted}
                 className="w-full rounded-2xl border border-white/10 bg-[#1E1E1E] px-4 py-4 text-left text-lg font-semibold hover:bg-white/5"
               >
                 Récemment supprimés
@@ -1348,17 +1239,25 @@ export default function VehicleDashboard({ vehicles }: Props) {
 
               <button
                 type="button"
-                onClick={openAddModal}
-                className="w-full rounded-2xl border border-white/10 bg-white px-4 py-4 text-left text-lg font-semibold text-black"
+                onClick={goToAssurances}
+                className="w-full rounded-2xl border border-white/10 bg-[#1E1E1E] px-4 py-4 text-left text-lg font-semibold hover:bg-white/5"
               >
-                Ajouter un véhicule
+                Assurances
+              </button>
+
+              <button
+                type="button"
+                onClick={goToClaims}
+                className="w-full rounded-2xl border border-white/10 bg-[#1E1E1E] px-4 py-4 text-left text-lg font-semibold hover:bg-white/5"
+              >
+                Sinistres
               </button>
             </div>
           </div>
         </>
       )}
 
-      {addOpen && (
+      {addVehicleOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-3xl rounded-3xl border border-white/10 bg-[#1E1E1E] p-6">
             <div className="mb-6 flex items-center justify-between">
@@ -1366,8 +1265,8 @@ export default function VehicleDashboard({ vehicles }: Props) {
               <button
                 type="button"
                 onClick={() => {
-                  setAddOpen(false)
-                  setAddForm(emptyForm)
+                  setAddVehicleOpen(false)
+                  setVehicleForm(emptyVehicleForm)
                 }}
                 className="rounded-xl border border-white/10 px-3 py-2 text-sm text-zinc-300"
               >
@@ -1377,48 +1276,48 @@ export default function VehicleDashboard({ vehicles }: Props) {
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <input
-                value={addForm.license_plate}
-                onChange={(e) => updateAddForm('license_plate', e.target.value)}
+                value={vehicleForm.license_plate}
+                onChange={(e) => updateVehicleForm('license_plate', e.target.value)}
                 placeholder="Immatriculation"
-                className={inputCls}
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               />
               <input
-                value={addForm.brand}
-                onChange={(e) => updateAddForm('brand', e.target.value)}
+                value={vehicleForm.brand}
+                onChange={(e) => updateVehicleForm('brand', e.target.value)}
                 placeholder="Marque"
-                className={inputCls}
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               />
               <input
-                value={addForm.model}
-                onChange={(e) => updateAddForm('model', e.target.value)}
+                value={vehicleForm.model}
+                onChange={(e) => updateVehicleForm('model', e.target.value)}
                 placeholder="Modèle"
-                className={inputCls}
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               />
               <input
-                value={addForm.mileage}
-                onChange={(e) => updateAddForm('mileage', e.target.value)}
+                value={vehicleForm.mileage}
+                onChange={(e) => updateVehicleForm('mileage', e.target.value)}
                 placeholder="Kilométrage"
                 type="number"
-                className={inputCls}
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               />
               <input
-                value={addForm.next_service_km}
-                onChange={(e) => updateAddForm('next_service_km', e.target.value)}
+                value={vehicleForm.next_service_km}
+                onChange={(e) => updateVehicleForm('next_service_km', e.target.value)}
                 placeholder="Prochain entretien"
                 type="number"
-                className={inputCls}
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               />
               <input
-                value={addForm.parking_location}
-                onChange={(e) => updateAddForm('parking_location', e.target.value)}
+                value={vehicleForm.parking_location}
+                onChange={(e) => updateVehicleForm('parking_location', e.target.value)}
                 placeholder="Emplacement parking"
-                className={inputCls}
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               />
 
               <select
-                value={addForm.status}
-                onChange={(e) => updateAddForm('status', e.target.value)}
-                className={inputCls}
+                value={vehicleForm.status}
+                onChange={(e) => updateVehicleForm('status', e.target.value)}
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               >
                 <option value="Disponible">Disponible</option>
                 <option value="En contrat LLD">En contrat LLD</option>
@@ -1428,9 +1327,9 @@ export default function VehicleDashboard({ vehicles }: Props) {
               </select>
 
               <select
-                value={addForm.bodywork_status}
-                onChange={(e) => updateAddForm('bodywork_status', e.target.value)}
-                className={inputCls}
+                value={vehicleForm.bodywork_status}
+                onChange={(e) => updateVehicleForm('bodywork_status', e.target.value)}
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               >
                 <option value="ok">OK</option>
                 <option value="a_verifier">À vérifier</option>
@@ -1439,10 +1338,10 @@ export default function VehicleDashboard({ vehicles }: Props) {
               </select>
 
               <textarea
-                value={addForm.notes}
-                onChange={(e) => updateAddForm('notes', e.target.value)}
+                value={vehicleForm.notes}
+                onChange={(e) => updateVehicleForm('notes', e.target.value)}
                 placeholder="Notes"
-                className={`${inputCls} min-h-[120px] md:col-span-2`}
+                className="min-h-[120px] rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none md:col-span-2"
               />
             </div>
 
@@ -1450,28 +1349,133 @@ export default function VehicleDashboard({ vehicles }: Props) {
               <button
                 type="button"
                 onClick={handleAddVehicle}
-                disabled={savingAdd}
-                className={modalBtnCls}
+                disabled={savingVehicle}
+                className="rounded-2xl bg-white px-5 py-3 font-semibold text-black disabled:opacity-50"
               >
-                {savingAdd ? 'Ajout...' : 'Enregistrer le véhicule'}
+                {savingVehicle ? 'Ajout...' : 'Enregistrer le véhicule'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {parkingOpen && (
+      {manageVehicleOpen && selectedVehicle && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-3xl rounded-3xl border border-white/10 bg-[#1E1E1E] p-6">
             <div className="mb-6 flex items-center justify-between">
-              <h2 className="text-2xl font-bold">
-                {selectedParkingLink ? `Gérer ${selectedParkingLink.parking_name}` : 'Ajouter un parking'}
-              </h2>
+              <h2 className="text-2xl font-bold">Gérer {selectedVehicle.license_plate}</h2>
+              <button
+                type="button"
+                onClick={() => setManageVehicleOpen(false)}
+                className="rounded-xl border border-white/10 px-3 py-2 text-sm text-zinc-300"
+              >
+                Fermer
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <input
+                value={editVehicleForm.license_plate}
+                onChange={(e) => updateEditVehicleForm('license_plate', e.target.value)}
+                placeholder="Immatriculation"
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              />
+              <input
+                value={editVehicleForm.brand}
+                onChange={(e) => updateEditVehicleForm('brand', e.target.value)}
+                placeholder="Marque"
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              />
+              <input
+                value={editVehicleForm.model}
+                onChange={(e) => updateEditVehicleForm('model', e.target.value)}
+                placeholder="Modèle"
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              />
+              <input
+                value={editVehicleForm.mileage}
+                onChange={(e) => updateEditVehicleForm('mileage', e.target.value)}
+                placeholder="Kilométrage"
+                type="number"
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              />
+              <input
+                value={editVehicleForm.next_service_km}
+                onChange={(e) => updateEditVehicleForm('next_service_km', e.target.value)}
+                placeholder="Prochain entretien"
+                type="number"
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              />
+              <input
+                value={editVehicleForm.parking_location}
+                onChange={(e) => updateEditVehicleForm('parking_location', e.target.value)}
+                placeholder="Emplacement parking"
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              />
+
+              <select
+                value={editVehicleForm.status}
+                onChange={(e) => updateEditVehicleForm('status', e.target.value)}
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              >
+                <option value="Disponible">Disponible</option>
+                <option value="En contrat LLD">En contrat LLD</option>
+                <option value="Carrosserie en cours">Carrosserie en cours</option>
+                <option value="Entretien">Entretien</option>
+                <option value="Indisponible">Indisponible</option>
+              </select>
+
+              <select
+                value={editVehicleForm.bodywork_status}
+                onChange={(e) => updateEditVehicleForm('bodywork_status', e.target.value)}
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              >
+                <option value="ok">OK</option>
+                <option value="a_verifier">À vérifier</option>
+                <option value="en_cours">En réparation</option>
+                <option value="urgent">Urgent</option>
+              </select>
+
+              <textarea
+                value={editVehicleForm.notes}
+                onChange={(e) => updateEditVehicleForm('notes', e.target.value)}
+                placeholder="Notes"
+                className="min-h-[120px] rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none md:col-span-2"
+              />
+            </div>
+
+            <div className="mt-6 flex flex-wrap justify-between gap-3">
+              <button
+                type="button"
+                onClick={handleArchiveVehicle}
+                disabled={savingEditVehicle}
+                className="rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-3 font-semibold text-red-300 disabled:opacity-50"
+              >
+                Supprimer (30 jours)
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveVehicle}
+                disabled={savingEditVehicle}
+                className="rounded-2xl bg-white px-5 py-3 font-semibold text-black disabled:opacity-50"
+              >
+                {savingEditVehicle ? 'Enregistrement...' : 'Enregistrer les modifications'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {addParkingOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-3xl rounded-3xl border border-white/10 bg-[#1E1E1E] p-6">
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className="text-2xl font-bold">Ajouter un parking</h2>
               <button
                 type="button"
                 onClick={() => {
-                  setParkingOpen(false)
-                  setSelectedParkingLink(null)
+                  setAddParkingOpen(false)
                   setParkingForm(emptyParkingForm)
                 }}
                 className="rounded-xl border border-white/10 px-3 py-2 text-sm text-zinc-300"
@@ -1482,147 +1486,106 @@ export default function VehicleDashboard({ vehicles }: Props) {
 
             <div className="grid grid-cols-1 gap-4">
               <input
-                value={parkingForm.parking_name}
-                onChange={(e) => updateParkingForm('parking_name', e.target.value)}
+                value={parkingForm.name}
+                onChange={(e) => updateParkingForm('name', e.target.value)}
                 placeholder="Nom du parking"
-                className={inputCls}
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               />
               <input
                 value={parkingForm.entry_address}
                 onChange={(e) => updateParkingForm('entry_address', e.target.value)}
-                placeholder="Adresse entrée"
-                className={inputCls}
+                placeholder="Adresse d'entrée"
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               />
               <input
                 value={parkingForm.exit_address}
                 onChange={(e) => updateParkingForm('exit_address', e.target.value)}
-                placeholder="Adresse sortie"
-                className={inputCls}
+                placeholder="Adresse de sortie"
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               />
               <input
                 value={parkingForm.parking_url}
                 onChange={(e) => updateParkingForm('parking_url', e.target.value)}
                 placeholder="Lien du parking"
-                className={inputCls}
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
+              />
+              <textarea
+                value={parkingForm.notes}
+                onChange={(e) => updateParkingForm('notes', e.target.value)}
+                placeholder="Notes"
+                className="min-h-[120px] rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               />
             </div>
 
             <div className="mt-6 flex justify-end">
               <button
                 type="button"
-                onClick={handleSaveParkingLink}
+                onClick={handleAddParking}
                 disabled={savingParking}
-                className={modalBtnCls}
+                className="rounded-2xl bg-white px-5 py-3 font-semibold text-black disabled:opacity-50"
               >
-                {savingParking ? 'Enregistrement...' : 'Enregistrer le parking'}
+                {savingParking ? 'Enregistrement...' : 'Ajouter le parking'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {manageOpen && selectedVehicle && (
+      {manageParkingOpen && selectedParkingLink && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-3xl rounded-3xl border border-white/10 bg-[#1E1E1E] p-6">
             <div className="mb-6 flex items-center justify-between">
-              <h2 className="text-2xl font-bold">Gérer {selectedVehicle.license_plate}</h2>
+              <h2 className="text-2xl font-bold">Gérer {selectedParkingLink.name}</h2>
               <button
                 type="button"
-                onClick={() => setManageOpen(false)}
+                onClick={() => setManageParkingOpen(false)}
                 className="rounded-xl border border-white/10 px-3 py-2 text-sm text-zinc-300"
               >
                 Fermer
               </button>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4">
               <input
-                value={editForm.license_plate}
-                onChange={(e) => updateEditForm('license_plate', e.target.value)}
-                placeholder="Immatriculation"
-                className={inputCls}
+                value={parkingForm.name}
+                onChange={(e) => updateParkingForm('name', e.target.value)}
+                placeholder="Nom du parking"
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               />
               <input
-                value={editForm.brand}
-                onChange={(e) => updateEditForm('brand', e.target.value)}
-                placeholder="Marque"
-                className={inputCls}
+                value={parkingForm.entry_address}
+                onChange={(e) => updateParkingForm('entry_address', e.target.value)}
+                placeholder="Adresse d'entrée"
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               />
               <input
-                value={editForm.model}
-                onChange={(e) => updateEditForm('model', e.target.value)}
-                placeholder="Modèle"
-                className={inputCls}
+                value={parkingForm.exit_address}
+                onChange={(e) => updateParkingForm('exit_address', e.target.value)}
+                placeholder="Adresse de sortie"
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               />
               <input
-                value={editForm.mileage}
-                onChange={(e) => updateEditForm('mileage', e.target.value)}
-                placeholder="Kilométrage"
-                type="number"
-                className={inputCls}
+                value={parkingForm.parking_url}
+                onChange={(e) => updateParkingForm('parking_url', e.target.value)}
+                placeholder="Lien du parking"
+                className="rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               />
-              <input
-                value={editForm.next_service_km}
-                onChange={(e) => updateEditForm('next_service_km', e.target.value)}
-                placeholder="Prochain entretien"
-                type="number"
-                className={inputCls}
-              />
-              <input
-                value={editForm.parking_location}
-                onChange={(e) => updateEditForm('parking_location', e.target.value)}
-                placeholder="Emplacement parking"
-                className={inputCls}
-              />
-
-              <select
-                value={editForm.status}
-                onChange={(e) => updateEditForm('status', e.target.value)}
-                className={inputCls}
-              >
-                <option value="Disponible">Disponible</option>
-                <option value="En contrat LLD">En contrat LLD</option>
-                <option value="Carrosserie en cours">Carrosserie en cours</option>
-                <option value="Entretien">Entretien</option>
-                <option value="Indisponible">Indisponible</option>
-              </select>
-
-              <select
-                value={editForm.bodywork_status}
-                onChange={(e) => updateEditForm('bodywork_status', e.target.value)}
-                className={inputCls}
-              >
-                <option value="ok">OK</option>
-                <option value="a_verifier">À vérifier</option>
-                <option value="en_cours">En réparation</option>
-                <option value="urgent">Urgent</option>
-              </select>
-
               <textarea
-                value={editForm.notes}
-                onChange={(e) => updateEditForm('notes', e.target.value)}
+                value={parkingForm.notes}
+                onChange={(e) => updateParkingForm('notes', e.target.value)}
                 placeholder="Notes"
-                className={`${inputCls} min-h-[120px] md:col-span-2`}
+                className="min-h-[120px] rounded-2xl border border-white/10 bg-[#151515] px-4 py-3 outline-none"
               />
             </div>
 
-            <div className="mt-6 flex flex-wrap justify-between gap-3">
+            <div className="mt-6 flex justify-end">
               <button
                 type="button"
-                onClick={handleArchiveVehicle}
-                disabled={savingEdit}
-                className="rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-3 font-semibold text-red-300 disabled:opacity-50"
+                onClick={handleSaveParking}
+                disabled={savingParking}
+                className="rounded-2xl bg-white px-5 py-3 font-semibold text-black disabled:opacity-50"
               >
-                Supprimer (30 jours)
-              </button>
-
-              <button
-                type="button"
-                onClick={handleSaveVehicle}
-                disabled={savingEdit}
-                className={modalBtnCls}
-              >
-                {savingEdit ? 'Enregistrement...' : 'Enregistrer les modifications'}
+                {savingParking ? 'Enregistrement...' : 'Enregistrer le parking'}
               </button>
             </div>
           </div>
